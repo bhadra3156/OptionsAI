@@ -1,101 +1,197 @@
-import Image from "next/image";
+// FILE: app/page.tsx  ← replaces existing app/page.tsx
 
-export default function Home() {
+import Link from 'next/link'
+import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs'
+import { ArrowRight, BarChart3, Shield, Zap, TrendingUp, CheckCircle, Activity } from 'lucide-react'
+
+export default function LandingPage() {
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="min-h-screen bg-background text-foreground">
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+      {/* Navigation */}
+      <nav className="border-b border-border px-6 py-4">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-primary" />
+            <span className="text-lg font-bold tracking-tight">OptionsAI</span>
+          </div>
+          <div className="flex items-center gap-6">
+            <SignedIn>
+              <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Dashboard
+              </Link>
+              <Link href="/scan" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Market Scan
+              </Link>
+              <Link href="/strategies" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Strategies
+              </Link>
+              <UserButton afterSignOutUrl="/" />
+            </SignedIn>
+            <SignedOut>
+              <SignInButton mode="modal">
+                <button className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  Sign in
+                </button>
+              </SignInButton>
+              <Link
+                href="/sign-up"
+                className="bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:bg-primary/90 transition-colors"
+              >
+                Get started free
+              </Link>
+            </SignedOut>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+      </nav>
+
+      {/* Hero */}
+      <section className="max-w-6xl mx-auto px-6 py-28 text-center">
+        <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-1.5 text-sm text-primary mb-8">
+          <Zap className="h-3.5 w-3.5" />
+          Powered by Claude AI + Live Market Data
+        </div>
+
+        <h1 className="text-5xl md:text-6xl font-bold tracking-tight leading-tight mb-6">
+          Institutional Options Strategy
+          <span className="block text-primary mt-2">In Seconds</span>
+        </h1>
+
+        <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
+          Enter any US stock ticker. Receive a professional-grade options strategy built on
+          live IV data, Greeks analysis, and the same probability framework used by hedge fund options desks.
+        </p>
+
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+          <SignedOut>
+            <Link
+              href="/sign-up"
+              className="flex items-center gap-2 bg-primary text-primary-foreground font-semibold px-8 py-3.5 rounded-md hover:bg-primary/90 transition-colors text-base"
+            >
+              Start analysing free
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </SignedOut>
+          <SignedIn>
+            <Link
+              href="/scan"
+              className="flex items-center gap-2 bg-primary text-primary-foreground font-semibold px-8 py-3.5 rounded-md hover:bg-primary/90 transition-colors text-base"
+            >
+              Open Market Scan
+              <Activity className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/dashboard"
+              className="flex items-center gap-2 bg-card border border-border text-foreground font-semibold px-8 py-3.5 rounded-md hover:bg-secondary/50 transition-colors text-base"
+            >
+              Analyse a Ticker
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </SignedIn>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-6 max-w-lg mx-auto">
+          {[
+            { value: '8', label: 'Strategy types' },
+            { value: '68%', label: 'Avg probability of profit' },
+            { value: '30', label: 'Tickers scanned' },
+          ].map(stat => (
+            <div key={stat.label} className="text-center">
+              <div className="text-2xl font-bold text-primary">{stat.value}</div>
+              <div className="text-xs text-muted-foreground mt-1">{stat.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Features */}
+      <section className="max-w-6xl mx-auto px-6 py-16 border-t border-border">
+        <h2 className="text-2xl font-bold text-center mb-12">Three tools. One platform.</h2>
+        <div className="grid md:grid-cols-3 gap-6">
+          {[
+            {
+              icon: Activity,
+              title: 'Market Scan',
+              desc: 'Scan 30 of the most liquid options markets simultaneously. AI scores every ticker and tells you where the best opportunities are right now — before you even know what to look for.',
+              href: '/scan',
+              label: 'Open Market Scan',
+            },
+            {
+              icon: BarChart3,
+              title: 'Strategy Analysis',
+              desc: 'Enter any ticker and receive a complete institutional-grade strategy — IV Rank analysis, exact strikes, expiry dates, max profit/loss, breakeven levels, and specific timing rules.',
+              href: '/dashboard',
+              label: 'Analyse a Ticker',
+            },
+            {
+              icon: Shield,
+              title: 'Trading Playbook',
+              desc: 'The complete professional framework — all 8 strategies explained, IV Rank rules, timing rules, the Wheel Strategy, and the pre-trade checklist every professional follows.',
+              href: '/strategies',
+              label: 'Read the Playbook',
+            },
+          ].map(f => (
+            <div key={f.title} className="bg-card border border-border rounded-lg p-6 flex flex-col">
+              <f.icon className="h-7 w-7 text-primary mb-4" />
+              <h3 className="font-semibold mb-2">{f.title}</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed flex-1">{f.desc}</p>
+              <SignedIn>
+                <Link
+                  href={f.href}
+                  className="mt-4 text-sm text-primary font-medium hover:underline flex items-center gap-1"
+                >
+                  {f.label} <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </SignedIn>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Strategy list */}
+      <section className="max-w-6xl mx-auto px-6 py-16 border-t border-border">
+        <h2 className="text-2xl font-bold text-center mb-4">8 Professional Strategies</h2>
+        <p className="text-center text-muted-foreground mb-10">
+          The AI selects the right one based on IV Rank, earnings risk, and directional bias
+        </p>
+        <div className="grid md:grid-cols-2 gap-3 max-w-3xl mx-auto">
+          {[
+            { name: 'Covered Call', risk: '1/5', when: 'IV Rank > 30, neutral outlook' },
+            { name: 'Cash-Secured Put', risk: '2/5', when: 'IV Rank > 40, bullish bias' },
+            { name: 'Iron Condor', risk: '2/5', when: 'IV Rank > 50, range-bound stock' },
+            { name: 'Iron Butterfly', risk: '2/5', when: 'IV Rank > 60, very low movement' },
+            { name: 'Bull Put Spread', risk: '3/5', when: 'IV Rank > 40, bullish bias' },
+            { name: 'Bear Call Spread', risk: '3/5', when: 'IV Rank > 40, bearish bias' },
+            { name: 'Long Call / Put', risk: '4/5', when: 'IV Rank < 30, strong catalyst' },
+            { name: 'LEAPS', risk: '4/5', when: 'IV Rank < 25, long-term conviction' },
+          ].map(s => (
+            <div key={s.name} className="flex items-center gap-3 bg-card border border-border rounded-md px-4 py-3">
+              <CheckCircle className="h-4 w-4 text-primary shrink-0" />
+              <div className="flex-1 min-w-0">
+                <span className="font-medium text-sm">{s.name}</span>
+                <span className="text-muted-foreground text-xs ml-2">Risk {s.risk}</span>
+              </div>
+              <span className="text-xs text-muted-foreground hidden md:block">{s.when}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-border mt-8">
+        <div className="max-w-6xl mx-auto px-6 py-8 text-center">
+          <p className="text-xs text-muted-foreground leading-relaxed max-w-2xl mx-auto">
+            This analysis is for educational and informational purposes only. It does not constitute
+            financial advice. Options trading involves significant risk and is not suitable for all investors.
+            You may lose more than your initial investment.
+          </p>
+          <p className="text-xs text-muted-foreground mt-3">
+            © 2025 OptionsAI. Built with Next.js, Claude AI, and Yahoo Finance.
+          </p>
+        </div>
       </footer>
+
     </div>
-  );
+  )
 }
