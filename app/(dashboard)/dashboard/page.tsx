@@ -13,7 +13,7 @@ import {
   ArrowUpRight, ArrowDownRight, Minus,
   ShieldCheck, Clock, AlertTriangle, ChevronRight,
   ChevronDown, ChevronUp, CheckCircle2, BookOpen,
-  Move, Target, Activity
+  Move, Target, Activity, Calculator, Bookmark, BookmarkCheck, Star, X
 } from 'lucide-react'
 import type { AnalyzeResponse } from '@/types/strategy'
 import { getRiskLabel, getRiskColour, formatDate } from '@/lib/utils'
