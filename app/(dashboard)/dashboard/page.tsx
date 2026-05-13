@@ -13,7 +13,7 @@ import {
   ArrowUpRight, ArrowDownRight, Minus,
   ShieldCheck, Clock, AlertTriangle, ChevronRight,
   ChevronDown, ChevronUp, CheckCircle2, BookOpen,
-  Move, Target, Activity, Calculator
+  Move, Target, Activity
 } from 'lucide-react'
 import type { AnalyzeResponse } from '@/types/strategy'
 import { getRiskLabel, getRiskColour, formatDate } from '@/lib/utils'
@@ -369,6 +369,8 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<AnalyzeResponse | null>(null)
   const [checklistOpen, setChecklistOpen] = useState(true)
+  const [watchlist, setWatchlist] = useState<string[]>([])
+  const [watchlistLoading, setWatchlistLoading] = useState(false)
 
   useEffect(() => {
     const t = searchParams.get('ticker')
@@ -377,6 +379,43 @@ export default function DashboardPage() {
       setChecklistOpen(false)
     }
   }, [searchParams])
+
+  // Fetch watchlist on mount
+  useEffect(() => {
+    async function fetchWatchlist() {
+      try {
+        const res = await fetch('/api/watchlist')
+        const data = await res.json()
+        if (res.ok) setWatchlist(data.tickers.map((t: {ticker: string}) => t.ticker))
+      } catch { /* silent fail */ }
+    }
+    fetchWatchlist()
+  }, [])
+
+  async function addToWatchlist(t: string) {
+    setWatchlistLoading(true)
+    try {
+      await fetch('/api/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: t }),
+      })
+      setWatchlist(prev => prev.includes(t) ? prev : [t, ...prev])
+    } finally { setWatchlistLoading(false) }
+  }
+
+  async function removeFromWatchlist(t: string) {
+    try {
+      await fetch('/api/watchlist', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker: t }),
+      })
+      setWatchlist(prev => prev.filter(w => w !== t))
+    } catch { /* silent fail */ }
+  }
+
+  const isWatched = watchlist.includes(ticker.toUpperCase())
 
   async function handleAnalyze(e: React.FormEvent) {
     e.preventDefault()
@@ -423,6 +462,33 @@ export default function DashboardPage() {
             {isLoading ? <><Loader2 className="h-4 w-4 animate-spin" />Analysing...</> : <><Search className="h-4 w-4" />Analyse</>}
           </button>
         </form>
+
+        {/* Watchlist */}
+        {watchlist.length > 0 && (
+          <div className="flex items-center gap-2 mb-6 flex-wrap">
+            <Star className="h-3.5 w-3.5 text-primary shrink-0" />
+            <span className="text-xs text-muted-foreground">Watchlist:</span>
+            {watchlist.map(t => (
+              <div key={t} className="flex items-center gap-1 group">
+                <button
+                  onClick={() => {
+                    setTicker(t)
+                    setChecklistOpen(false)
+                  }}
+                  className="text-xs font-mono font-semibold px-2.5 py-1 bg-card border border-border rounded hover:border-primary hover:text-primary transition-colors"
+                >
+                  {t}
+                </button>
+                <button
+                  onClick={() => removeFromWatchlist(t)}
+                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Pre-Trade Checklist */}
         <div className="bg-card border border-border rounded-lg mb-8 overflow-hidden">
@@ -482,7 +548,25 @@ export default function DashboardPage() {
                     <h2 className="text-2xl font-bold">{result.strategy.strategyName}</h2>
                     <OutlookBadge outlook={result.strategy.marketOutlook} />
                   </div>
-                  <p className="text-sm text-muted-foreground">{result.marketData.ticker} · Generated {new Date(result.generatedAt).toLocaleTimeString('en-GB')}</p>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <p className="text-sm text-muted-foreground">
+                      {result.marketData.ticker} · Generated {new Date(result.generatedAt).toLocaleTimeString('en-GB')}
+                    </p>
+                    <button
+                      onClick={() => isWatched ? removeFromWatchlist(result.marketData.ticker) : addToWatchlist(result.marketData.ticker)}
+                      disabled={watchlistLoading}
+                      className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded border transition-colors ${
+                        isWatched
+                          ? 'bg-primary/10 text-primary border-primary/20 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20'
+                          : 'bg-card text-muted-foreground border-border hover:text-primary hover:border-primary/30'
+                      }`}
+                    >
+                      {isWatched
+                        ? <><BookmarkCheck className="h-3 w-3" />&nbsp;Watching</>
+                        : <><Bookmark className="h-3 w-3" />&nbsp;Watch</>
+                      }
+                    </button>
+                  </div>
                 </div>
                 <div className="text-right shrink-0">
                   <div className={`text-lg font-bold ${getRiskColour(result.strategy.metrics.riskRating)}`}>{getRiskLabel(result.strategy.metrics.riskRating)}</div>
