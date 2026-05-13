@@ -1,25 +1,18 @@
 // FILE: app/api/analyze/route.ts
-// This is the CORE API endpoint of the entire application.
-// When the frontend sends a POST request with a ticker symbol,
-// this route: 1) fetches live market data from Polygon.io
-//             2) sends it to Claude AI to generate a strategy
-//             3) saves the result to Supabase
-//             4) returns the strategy JSON to the frontend
-//
-// It is a server-side only route — API keys never reach the browser.
+// Core API endpoint. POST a ticker → get back a strategy.
+// Uses Yahoo Finance for market data + Claude AI for strategy generation.
+
+export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { fetchMarketData } from '@/lib/polygon'
+import { fetchMarketData } from '@/lib/yahoo'
 import { generateStrategy } from '@/lib/anthropic'
 import { supabaseAdmin } from '@/lib/supabase'
 import { isValidTicker } from '@/lib/utils'
-import type { AnalyzeRequest, AnalyzeResponse } from '@/types/strategy'
 
 export async function POST(request: NextRequest) {
   try {
-    // ── 1. Authentication check ──────────────────────────────────────────────
-    // Clerk's auth() returns the userId if logged in, null if not
     const { userId } = auth()
     if (!userId) {
       return NextResponse.json(
@@ -28,13 +21,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ── 2. Parse and validate the request body ──────────────────────────────
-    let body: AnalyzeRequest
+    let body: { ticker?: string }
     try {
       body = await request.json()
     } catch {
       return NextResponse.json(
-        { error: 'Invalid request body. Expected JSON with a ticker field.' },
+        { error: 'Invalid request. Expected JSON with a ticker field.' },
         { status: 400 }
       )
     }
@@ -42,65 +34,51 @@ export async function POST(request: NextRequest) {
     const { ticker } = body
 
     if (!ticker || typeof ticker !== 'string') {
-      return NextResponse.json(
-        { error: 'Ticker symbol is required.' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Ticker symbol is required.' }, { status: 400 })
     }
 
     if (!isValidTicker(ticker)) {
       return NextResponse.json(
-        { error: 'Invalid ticker symbol. Use 1–5 letters (e.g. AAPL, TSLA, SPY).' },
+        { error: 'Invalid ticker. Use 1-5 letters only (e.g. AAPL, TSLA, SPY).' },
         { status: 400 }
       )
     }
 
-    // ── 3. Fetch live market data from Polygon.io ────────────────────────────
     let marketData
     try {
       marketData = await fetchMarketData(ticker)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      return NextResponse.json(
-        { error: `Failed to fetch market data: ${message}` },
-        { status: 502 }
-      )
+      const msg = error instanceof Error ? error.message : 'Unknown error'
+      return NextResponse.json({ error: `Market data error: ${msg}` }, { status: 502 })
     }
 
-    // ── 4. Generate strategy with Claude AI ─────────────────────────────────
     let strategy
     try {
       strategy = await generateStrategy(marketData)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      return NextResponse.json(
-        { error: `AI strategy generation failed: ${message}` },
-        { status: 502 }
-      )
+      const msg = error instanceof Error ? error.message : 'Unknown error'
+      return NextResponse.json({ error: `AI strategy error: ${msg}` }, { status: 502 })
     }
 
-    // ── 5. Save to Supabase (best-effort — don't fail if DB is down) ─────────
     try {
       await supabaseAdmin.from('analyses').insert({
         user_id: userId,
         ticker: marketData.ticker,
         strategy_json: strategy,
-        market_data: {
+        market_snapshot: {
           currentPrice: marketData.currentPrice,
           ivRank: marketData.ivRank,
           iv30: marketData.iv30,
-          daysToEarnings: marketData.daysToEarnings,
           putCallRatio: marketData.putCallRatio,
+          daysToEarnings: marketData.daysToEarnings,
           vix: marketData.vix,
         },
       })
-    } catch (dbError) {
-      // Log the error but don't fail the request — strategy still gets returned
-      console.error('Failed to save analysis to Supabase:', dbError)
+    } catch (dbErr) {
+      console.error('Supabase save failed (non-critical):', dbErr)
     }
 
-    // ── 6. Return the strategy to the frontend ───────────────────────────────
-    const response: AnalyzeResponse = {
+    return NextResponse.json({
       strategy,
       marketData: {
         ticker: marketData.ticker,
@@ -114,12 +92,9 @@ export async function POST(request: NextRequest) {
         vix: marketData.vix,
       },
       generatedAt: new Date().toISOString(),
-    }
-
-    return NextResponse.json(response)
+    })
 
   } catch (error) {
-    // Catch-all for any unexpected errors
     console.error('Unexpected error in /api/analyze:', error)
     return NextResponse.json(
       { error: 'An unexpected error occurred. Please try again.' },

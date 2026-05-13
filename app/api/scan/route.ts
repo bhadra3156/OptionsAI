@@ -2,6 +2,8 @@
 // API endpoint for the Market Scan page.
 // Fetches all 30 tickers, then calls Claude once to score them all.
 
+export const dynamic = 'force-dynamic'
+
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import Anthropic from '@anthropic-ai/sdk'

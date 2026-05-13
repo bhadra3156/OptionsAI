@@ -1,6 +1,7 @@
 // FILE: app/api/market/route.ts
-// Fetches live market conditions from Yahoo Finance.
-// Uses ^VIX directly for accurate VIX reading.
+// Added: export const dynamic = 'force-dynamic' — required for Vercel deployment
+
+export const dynamic = 'force-dynamic'
 
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
@@ -39,26 +40,14 @@ async function fetchQuote(symbol: string, cookie: string, crumb: string) {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Cookie': cookie, 'Accept': 'application/json', 'Referer': 'https://finance.yahoo.com',
   }
-  // ^VIX needs URL encoding
   const encodedSymbol = encodeURIComponent(symbol)
   const res = await fetch(
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodedSymbol}?interval=1d&range=2d&crumb=${encodeURIComponent(crumb)}`,
     { headers, cache: 'no-store', signal: AbortSignal.timeout(8000) }
   )
-  if (!res.ok) {
-    console.error(`Failed to fetch ${symbol}: ${res.status}`)
-    return null
-  }
+  if (!res.ok) return null
   const data = await res.json() as {
-    chart?: {
-      result?: Array<{
-        meta?: {
-          regularMarketPrice?: number
-          previousClose?: number
-          chartPreviousClose?: number
-        }
-      }>
-    }
+    chart?: { result?: Array<{ meta?: { regularMarketPrice?: number; previousClose?: number; chartPreviousClose?: number } }> }
   }
   const meta = data.chart?.result?.[0]?.meta
   if (!meta?.regularMarketPrice) return null
@@ -119,12 +108,8 @@ export async function GET() {
     if (!userId) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
 
     const { cookie, crumb } = await getYahooSession()
-
-    // Fetch all symbols in parallel — ^VIX is the real VIX index
     const allSymbols = ['^VIX', 'SPY', 'QQQ', 'IWM', ...SECTORS.map(s => s.ticker)]
-    const results = await Promise.allSettled(
-      allSymbols.map(sym => fetchQuote(sym, cookie, crumb))
-    )
+    const results = await Promise.allSettled(allSymbols.map(sym => fetchQuote(sym, cookie, crumb)))
 
     const getResult = (idx: number) => {
       const r = results[idx]
@@ -138,40 +123,26 @@ export async function GET() {
 
     if (!spy) return NextResponse.json({ error: 'Could not fetch market data. Please try again.' }, { status: 502 })
 
-    // Use real VIX — fall back to 18 if fetch fails
     const vix = vixData ? Math.round(vixData.price * 10) / 10 : 18
     const vixChange = vixData ? Math.round(vixData.change * 100) / 100 : 0
 
-    // Build sector data
     const sectors = SECTORS.map((s, i) => {
       const q = getResult(4 + i)
-      return {
-        ticker: s.ticker,
-        name: s.name,
-        price: q?.price ?? 0,
-        changePercent: q?.changePercent ?? 0,
-        ivEstimate: 15,
-      }
+      return { ticker: s.ticker, name: s.name, price: q?.price ?? 0, changePercent: q?.changePercent ?? 0, ivEstimate: 15 }
     }).filter(s => s.price > 0)
 
     const regime = determineRegime(vix, spy.changePercent)
 
     return NextResponse.json({
-      vix,
-      vixChange,
-      spy: {
-        ...spy,
-        trend: spy.changePercent >= 0.1 ? 'up' : spy.changePercent <= -0.1 ? 'down' : 'flat'
-      },
+      vix, vixChange,
+      spy: { ...spy, trend: spy.changePercent >= 0.1 ? 'up' : spy.changePercent <= -0.1 ? 'down' : 'flat' },
       qqq: qqq ?? { price: 0, change: 0, changePercent: 0 },
       iwm: iwm ?? { price: 0, change: 0, changePercent: 0 },
-      sectors,
-      regime,
+      sectors, regime,
       generatedAt: new Date().toISOString(),
     })
-
   } catch (err) {
     console.error('Market API error:', err)
-    return NextResponse.json({ error: 'Market data fetch failed. Please try again.' }, { status: 500 })
+    return NextResponse.json({ error: 'Market data fetch failed.' }, { status: 500 })
   }
 }

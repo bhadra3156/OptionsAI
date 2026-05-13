@@ -2,6 +2,8 @@
 // PATCH = close/update a trade
 // DELETE = delete a trade
 
+export const dynamic = 'force-dynamic'
+
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { supabaseAdmin } from '@/lib/supabase'
