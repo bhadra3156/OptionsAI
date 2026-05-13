@@ -1,7 +1,4 @@
 // FILE: components/layout/nav.tsx
-// Shared navigation component used by ALL dashboard pages
-// Update this ONE file to change nav across the entire app
-
 'use client'
 
 import Link from 'next/link'
@@ -10,9 +7,9 @@ import { UserButton } from '@clerk/nextjs'
 import { TrendingUp } from 'lucide-react'
 
 const NAV_LINKS = [
-  { href: '/dashboard', label: 'Dashboard' },
+  { href: '/dashboard', label: 'Analyse' },
   { href: '/market', label: 'Market' },
-  { href: '/scan', label: 'Market Scan' },
+  { href: '/scan', label: 'Scan' },
   { href: '/trades', label: 'Trade Journal' },
   { href: '/strategies', label: 'Strategies' },
 ]
