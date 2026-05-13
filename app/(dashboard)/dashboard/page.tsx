@@ -1,4 +1,4 @@
-// FILE: app/(dashboard)/dashboard/page.tsx
+﻿// FILE: app/(dashboard)/dashboard/page.tsx
 // Added: Expected Move Calculator shown on every strategy result
 
 'use client'
@@ -549,7 +549,6 @@ export default function DashboardPage() {
                     <OutlookBadge outlook={result.strategy.marketOutlook} />
                   </div>
                   <div className="flex items-center gap-3 flex-wrap">
-                    <div className="flex items-center gap-3 flex-wrap mt-1">
                     <p className="text-sm text-muted-foreground">
                       {result.marketData.ticker} &middot; Generated {new Date(result.generatedAt).toLocaleTimeString('en-GB')}
                     </p>
@@ -560,8 +559,6 @@ export default function DashboardPage() {
                     >
                       {isWatched ? <><BookmarkCheck className="h-3 w-3" /> Watching</> : <><Bookmark className="h-3 w-3" /> Watch</>}
                     </button>
-                  </div>
-
                   </div>
                 </div>
                 <div className="text-right shrink-0">
