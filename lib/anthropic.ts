@@ -1,147 +1,76 @@
 // FILE: lib/anthropic.ts
-// Two-call AI pipeline:
-// Call 1 — web search for market context (news, trend, catalysts)
-// Call 2 — strategy generation using options data + market context
+// This file handles all communication with the Claude API.
+// It exports one function: generateStrategy()
+// That function takes live market data, sends it to Claude with the full
+// professional system prompt, and returns a validated strategy JSON object.
 
 import Anthropic from '@anthropic-ai/sdk'
 import type { MarketData } from '@/types/market'
 import type { OptionsStrategy } from '@/types/strategy'
 
+// Initialise the Anthropic client — it automatically reads ANTHROPIC_API_KEY
+// from your .env.local file. Never hardcode the key here.
 const anthropic = new Anthropic()
 
-// ── CALL 1: Market Context ─────────────────────────────────────────────────
-// Uses Claude's web search tool to find recent news and price action.
-// Returns a structured summary the strategy call can use.
+// ── SYSTEM PROMPT ─────────────────────────────────────────────────────────────
+// This is sent to Claude on every request. It defines Claude's role, rules,
+// strategy selection logic, and the required JSON output format.
+const SYSTEM_PROMPT = `You are a world-class professional options trader with 20+ years of institutional experience at top-tier trading firms. You analyse live options chain data and market conditions to recommend the single best options strategy for a given stock at this exact moment in time.
 
-interface MarketContext {
-  recentTrend: string        // e.g. "Downtrend — down 8% over 3 weeks"
-  keyLevels: string          // e.g. "Support $285, resistance $310"
-  recentCatalysts: string    // e.g. "iPhone sales miss, China tariff concerns"
-  sectorCondition: string    // e.g. "Tech sector weak, Nasdaq down 3% this week"
-  analystSentiment: string   // e.g. "12 Buy, 4 Hold, 1 Sell — avg target $340"
-  summary: string            // 2-3 sentence overall picture
-}
-
-async function getMarketContext(ticker: string, currentPrice: number): Promise<MarketContext> {
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-5',
-    max_tokens: 1000,
-    tools: [
-      {
-        type: 'web_search_20250305',
-        name: 'web_search',
-      } as never,
-    ],
-    messages: [
-      {
-        role: 'user',
-        content: `Search for recent market information about ${ticker} stock (currently $${currentPrice}).
-
-Find and summarise:
-1. Recent price trend (last 2-4 weeks) — up, down, sideways, % change
-2. Key support and resistance price levels
-3. Recent news catalysts — earnings, product launches, macro events
-4. Current sector/market conditions affecting this stock
-5. Analyst consensus — buy/hold/sell ratings and price targets if available
-
-Return ONLY valid JSON, no markdown, parseable by JSON.parse():
-{
-  "recentTrend": "string — direction and % change over recent weeks",
-  "keyLevels": "string — key support and resistance prices",
-  "recentCatalysts": "string — recent news events affecting the stock",
-  "sectorCondition": "string — sector and broader market context",
-  "analystSentiment": "string — analyst ratings and price targets",
-  "summary": "string — 2-3 sentence overall picture of current situation"
-}`,
-      },
-    ],
-  })
-
-  // Extract the final text response (after web search tool use)
-  const textBlock = message.content.find(block => block.type === 'text')
-  if (!textBlock || textBlock.type !== 'text') {
-    // If no text block, return sensible defaults
-    return {
-      recentTrend: 'Insufficient recent data',
-      keyLevels: `Current price $${currentPrice}`,
-      recentCatalysts: 'No recent catalysts identified',
-      sectorCondition: 'Sector data unavailable',
-      analystSentiment: 'Analyst data unavailable',
-      summary: `${ticker} is currently trading at $${currentPrice}. No additional market context available.`,
-    }
-  }
-
-  try {
-    const clean = textBlock.text
-      .replace(/```json\n?/g, '')
-      .replace(/```\n?/g, '')
-      .trim()
-    return JSON.parse(clean) as MarketContext
-  } catch {
-    // If JSON parse fails, return defaults with whatever text we got
-    return {
-      recentTrend: 'Data parsing error',
-      keyLevels: `Current price $${currentPrice}`,
-      recentCatalysts: 'Unable to parse catalyst data',
-      sectorCondition: 'Unable to parse sector data',
-      analystSentiment: 'Unable to parse analyst data',
-      summary: textBlock.text.slice(0, 300),
-    }
-  }
-}
-
-// ── CALL 2: Strategy Generation ────────────────────────────────────────────
-// Full strategy prompt — now includes market context from Call 1.
-
-const STRATEGY_SYSTEM_PROMPT = `You are a world-class professional options trader with 20+ years of institutional experience at top-tier trading firms. You analyse live options chain data combined with current market context to recommend the single best options strategy.
-
-Think like a hedge fund options desk: data-driven, probability-focused, risk-first. Every recommendation must be grounded in the specific data provided — both the options metrics AND the market context.
+You think like a hedge fund options desk: data-driven, probability-focused, risk-first. You never speculate or guess. Every recommendation is grounded in the specific data provided to you.
 
 ## STRATEGY SELECTION RULES
 
-### Volatility rules
-- ivRank > 50 → SELL premium: iron condor, iron butterfly, cash-secured put, covered call, credit spread
-- ivRank < 30 → BUY options: long call/put, debit spread, LEAPS
-- ivRank 30-50 → use putCallRatio + price trend + market context for directional bias
+Follow these rules without exception:
+
+### Volatility environment rules
+1. If ivRank > 50: PREFER premium-selling strategies → iron condor, iron butterfly, cash-secured put, covered call, credit spread
+2. If ivRank < 30: PREFER premium-buying strategies → long call, long put, debit spread, LEAPS
+3. If ivRank is 30–50: use directional bias from putCallRatio and price trend to decide
 
 ### Earnings rules
-- daysToEarnings <= 7 → NEVER recommend buying options (IV crush risk)
-- daysToEarnings <= 14 → add prominent earnings warning
-- daysToEarnings = -1 → check market context for earnings clues, warn appropriately
+4. If daysToEarnings <= 7: DO NOT recommend buying any options — IV crush after earnings will destroy long option value
+5. If daysToEarnings <= 14: Add a prominent warning about earnings risk
+6. If daysToEarnings > 45: Earnings is not a primary concern for 45 DTE trades
 
 ### Timing rules
-- Selling strategies → target 30-45 DTE entry
-- Buying strategies → target 60-90 DTE
-- ALL strategies → close at 50% max profit OR 21 DTE (whichever first)
-- NEVER hold short options through final 7 days (gamma risk)
+7. For selling strategies: target 30–45 DTE entry
+8. For buying strategies: target 60–90 DTE
+9. ALWAYS recommend closing at 50% of max profit OR at 21 DTE — whichever comes first
+10. NEVER recommend holding a short options position through the final 7 days before expiration
 
-### Strike selection
-- Short strikes in credit strategies → 0.15-0.30 delta
-- Long options in debit strategies → 0.40-0.60 delta
-- LEAPS → 0.70-0.80 delta
+### Strike selection rules
+11. For short strikes in credit strategies: target 0.15–0.30 delta
+12. For long options in debit strategies: target 0.40–0.60 delta
+13. For LEAPS: use 0.70–0.80 delta
 
-### Risk rules
-- Max position size: 5% of portfolio
-- Stop loss for credit trades: 2x premium received
+### Risk management rules
+14. Maximum recommended position size: 5% of portfolio per trade
+15. Stop loss: 2x the premium received for selling strategies
 
-## RISK RATINGS
-1=Covered Call | 2=CSP/IronCondor/IronButterfly | 3=VerticalSpread | 4=LongOption/LEAPS | 5=Naked(avoid)
+## RISK RATING SCALE
+- 1 = Covered Call (lowest risk)
+- 2 = Cash-Secured Put / Iron Condor / Iron Butterfly
+- 3 = Vertical Credit or Debit Spread
+- 4 = Long Call / Long Put / Debit Spread
+- 5 = Naked options (avoid recommending)
 
-## HOW TO USE MARKET CONTEXT
-The marketContext field gives you real-world information about the stock:
-- Use recentTrend to confirm or challenge the directional bias from putCallRatio
-- Use keyLevels to place strikes at technically significant prices
-- Use recentCatalysts to assess event risk (earnings, product launches, macro)
-- Use sectorCondition to assess broader risk
-- Reference ALL of this in your rationale — this is what makes the analysis institutional quality
+## OUTPUT FORMAT — CRITICAL
 
-## OUTPUT — CRITICAL
-Return ONLY valid JSON. No markdown, no preamble. Must be parseable by JSON.parse() immediately.
+Return ONLY valid JSON. No preamble, no explanation, no markdown code fences. The response must be parseable by JSON.parse() immediately.
 
 {
   "strategyName": string,
-  "marketOutlook": "bullish"|"bearish"|"neutral"|"high-volatility",
-  "legs": [{"action":"buy"|"sell","type":"call"|"put","strike":number,"expiry":"YYYY-MM-DD","quantity":number}],
+  "marketOutlook": "bullish" | "bearish" | "neutral" | "high-volatility",
+  "legs": [
+    {
+      "action": "buy" | "sell",
+      "type": "call" | "put",
+      "strike": number,
+      "expiry": "YYYY-MM-DD",
+      "quantity": number
+    }
+  ],
   "metrics": {
     "maxProfit": string,
     "maxLoss": string,
@@ -155,71 +84,62 @@ Return ONLY valid JSON. No markdown, no preamble. Must be parseable by JSON.pars
     "closeProfitTarget": string,
     "stopLoss": string
   },
-  "rationale": "3-5 sentences referencing BOTH options data AND market context — trend, key levels, catalysts, sector conditions",
+  "rationale": string,
   "warnings": [string],
   "disclaimer": "This is not financial advice. For educational purposes only."
 }
 
 ## LANGUAGE RULES
-- NEVER say "you should buy", "guaranteed", "will profit"
+- NEVER say "you should buy" or "this will profit" or "guaranteed"
 - ALWAYS say "this strategy may", "historically this approach", "based on current conditions"
-- Rationale MUST reference specific prices, levels, and events from the market context`
+- The disclaimer field must always be exactly: "This is not financial advice. For educational purposes only."
+- Never invent data. Only reference the specific numbers provided in the input.`
 
+// ── MAIN FUNCTION ─────────────────────────────────────────────────────────────
+// Takes the market data we fetched from Polygon.io and returns a strategy.
+// Throws an error if Claude returns something that isn't valid JSON.
 export async function generateStrategy(marketData: MarketData): Promise<OptionsStrategy> {
+  // Build the user message — this is the live market data Claude will analyse
+  const userMessage = `Analyse this options opportunity and return the single best strategy as JSON:
 
-  // ── Step 1: Get market context via web search ──────────────────────────
-  console.log(`[OptionsAI] Fetching market context for ${marketData.ticker}...`)
-  const marketContext = await getMarketContext(marketData.ticker, marketData.currentPrice)
-  console.log(`[OptionsAI] Market context retrieved. Generating strategy...`)
+${JSON.stringify(marketData, null, 2)}`
 
-  // ── Step 2: Generate strategy with full context ────────────────────────
+  // Call the Claude API
   const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-4-20250514',
     max_tokens: 1500,
-    system: STRATEGY_SYSTEM_PROMPT,
+    system: SYSTEM_PROMPT,
     messages: [
       {
         role: 'user',
-        content: `Analyse this stock and return the single best options strategy as JSON.
-
-## Live Options Data
-${JSON.stringify(marketData, null, 2)}
-
-## Current Market Context (from web search)
-${JSON.stringify(marketContext, null, 2)}
-
-Use BOTH data sources in your analysis. The rationale must reference specific data points from both.`,
+        content: userMessage,
       },
     ],
   })
 
+  // Extract the text content from the response
   const content = message.content[0]
   if (content.type !== 'text') {
     throw new Error('Unexpected response type from Claude API')
   }
 
-  const cleanJson = content.text
-    .replace(/```json\n?/g, '')
-    .replace(/```\n?/g, '')
-    .trim()
-
+  // Parse the JSON — Claude should return pure JSON per the system prompt
+  // If it doesn't, this will throw and the API route will return a 500 error
   let strategy: OptionsStrategy
   try {
+    // Strip any accidental markdown fences just in case
+    const cleanJson = content.text
+      .replace(/```json\n?/g, '')
+      .replace(/```\n?/g, '')
+      .trim()
+
     strategy = JSON.parse(cleanJson)
   } catch {
-    throw new Error(`Claude returned invalid JSON: ${content.text.slice(0, 300)}`)
+    throw new Error(`Failed to parse Claude response as JSON. Raw response: ${content.text.slice(0, 200)}`)
   }
 
-  // Always enforce the disclaimer
+  // Enforce the disclaimer regardless of what Claude returned
   strategy.disclaimer = 'This is not financial advice. For educational purposes only.'
-
-  // Attach market context to warnings if useful
-  if (marketContext.recentCatalysts && marketContext.recentCatalysts !== 'No recent catalysts identified') {
-    const catalystWarning = `Recent catalyst: ${marketContext.recentCatalysts}`
-    if (!strategy.warnings.some(w => w.includes('catalyst') || w.includes('earnings'))) {
-      strategy.warnings.unshift(catalystWarning)
-    }
-  }
 
   return strategy
 }

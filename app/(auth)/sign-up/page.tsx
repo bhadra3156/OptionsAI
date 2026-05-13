@@ -1,5 +1,5 @@
 // FILE: app/(auth)/sign-up/[[...sign-up]]/page.tsx
-// Clerk sign-up page. The [[...sign-up]] folder name is required by Clerk.
+// Clerk sign-up page. Same pattern as sign-in above.
 
 import { SignUp } from '@clerk/nextjs'
 
