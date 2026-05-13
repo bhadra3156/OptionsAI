@@ -1,34 +1,14 @@
 // FILE: app/(dashboard)/strategies/page.tsx
 
 import Link from 'next/link'
-import { UserButton } from '@clerk/nextjs'
-import { BookOpen, TrendingUp, ArrowUpRight, ArrowDownRight, Minus, Clock, ShieldCheck, AlertTriangle, ChevronRight } from 'lucide-react'
+import { BookOpen, ArrowUpRight, ArrowDownRight, Minus, Clock, ShieldCheck, AlertTriangle, ChevronRight } from 'lucide-react'
+import Nav from '@/components/layout/nav'
 
 export default function StrategiesPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
 
-      <nav className="border-b border-border px-6 py-4 sticky top-0 bg-background/95 backdrop-blur z-10">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-primary" />
-            <span className="text-lg font-bold tracking-tight">OptionsAI</span>
-          </Link>
-          <div className="flex items-center gap-6">
-            <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              Dashboard
-            </Link>
-            <Link href="/scan" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-              Market Scan
-            </Link>
-            <Link href="/strategies" className="text-sm text-primary font-medium">
-              Strategies
-            </Link>
-            <UserButton afterSignOutUrl="/" />
-          </div>
-        </div>
-      </nav>
-
+      <Nav />
       <main className="max-w-5xl mx-auto px-6 py-12">
 
         <div className="mb-12">
