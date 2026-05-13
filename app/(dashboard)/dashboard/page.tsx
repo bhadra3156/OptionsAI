@@ -534,6 +534,12 @@ export default function DashboardPage() {
               ticker={result.marketData.ticker}
             />
 
+            {/* Position Sizing Calculator */}
+            <PositionSizingCard
+              strategy={result.strategy}
+              marketData={result.marketData}
+            />
+
             {/* Trade Legs */}
             <div className="bg-card border border-border rounded-lg p-6">
               <SectionLabel icon={ChevronRight}>Trade Legs</SectionLabel>
@@ -758,6 +764,262 @@ function ChecklistItem({ item, flagColours }: { item: typeof CHECKLIST[0]; flagC
 }
 
 // ── Shared sub-components ──────────────────────────────────────────────────
+
+
+function PositionSizingCard({
+  strategy,
+  marketData,
+}: {
+  strategy: AnalyzeResponse['strategy']
+  marketData: AnalyzeResponse['marketData']
+}) {
+  const [portfolioSize, setPortfolioSize] = useState(10000)
+  const [riskPercent, setRiskPercent] = useState(2)
+  const [currency, setCurrency] = useState<'GBP' | 'USD'>('GBP')
+
+  const symbol = currency === 'GBP' ? '£' : '$'
+
+  // Determine max risk per trade from strategy
+  const maxLossPerContract = (() => {
+    const ml = strategy.metrics.maxLoss
+    // Try to parse dollar amount from string like "$550" or "$1,800"
+    const match = ml.replace(/,/g, '').match(/\$?([\d.]+)/)
+    if (match) return parseFloat(match[1])
+    // Fallback: use premium paid/received estimate
+    return 500
+  })()
+
+  const maxProfitPerContract = (() => {
+    const mp = strategy.metrics.maxProfit
+    if (mp === 'Unlimited') return null
+    const match = mp.replace(/,/g, '').match(/\$?([\d.]+)/)
+    if (match) return parseFloat(match[1])
+    return 300
+  })()
+
+  // Core calculation
+  const maxRiskDollars = (portfolioSize * riskPercent) / 100
+  const optimalContracts = Math.max(1, Math.floor(maxRiskDollars / maxLossPerContract))
+  const actualRisk = optimalContracts * maxLossPerContract
+  const actualRiskPercent = (actualRisk / portfolioSize) * 100
+  const potentialProfit = maxProfitPerContract ? optimalContracts * maxProfitPerContract : null
+  const riskRewardRatio = potentialProfit ? Math.round((potentialProfit / actualRisk) * 10) / 10 : null
+
+  // Portfolio tiers
+  const tiers = [
+    { pct: 1, label: 'Conservative', colour: 'text-primary' },
+    { pct: 2, label: 'Standard', colour: 'text-yellow-400' },
+    { pct: 5, label: 'Aggressive', colour: 'text-orange-400' },
+  ].map(t => ({
+    ...t,
+    maxRisk: (portfolioSize * t.pct) / 100,
+    contracts: Math.max(1, Math.floor(((portfolioSize * t.pct) / 100) / maxLossPerContract)),
+  }))
+
+  // Warning messages
+  const warnings: string[] = []
+  if (optimalContracts === 1 && actualRiskPercent > riskPercent + 1) {
+    warnings.push(`Minimum 1 contract exceeds your ${riskPercent}% target. Consider a smaller position or different strategy.`)
+  }
+  if (maxLossPerContract > portfolioSize * 0.1) {
+    warnings.push('This strategy has a large max loss relative to your portfolio. Consider a narrower spread width.')
+  }
+  if (strategy.metrics.riskRating >= 4) {
+    warnings.push('Risk rating 4-5: This is a high-risk strategy. Start with 1 contract only regardless of portfolio size.')
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-6">
+      <SectionLabel icon={Calculator}>Position Sizing Calculator</SectionLabel>
+
+      {/* Portfolio inputs */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div>
+          <label className="text-xs text-muted-foreground block mb-1.5">
+            Portfolio Size
+          </label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setCurrency(currency === 'GBP' ? 'USD' : 'GBP')}
+              className="bg-secondary border border-border rounded-md px-3 py-2 text-sm font-medium hover:bg-secondary/80 transition-colors shrink-0"
+            >
+              {symbol}
+            </button>
+            <input
+              type="number"
+              min="100"
+              step="1000"
+              value={portfolioSize}
+              onChange={e => setPortfolioSize(Math.max(100, parseFloat(e.target.value) || 0))}
+              className="flex-1 bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs text-muted-foreground block mb-1.5">
+            Risk Per Trade
+          </label>
+          <div className="flex gap-1.5">
+            {[1, 2, 3, 5].map(pct => (
+              <button
+                key={pct}
+                onClick={() => setRiskPercent(pct)}
+                className={`flex-1 py-2 text-sm font-medium rounded-md border transition-colors ${
+                  riskPercent === pct
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background border-border text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {pct}%
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs text-muted-foreground block mb-1.5">
+            Max Risk in {currency}
+          </label>
+          <div className="bg-secondary/50 border border-border rounded-md px-3 py-2 text-sm font-semibold text-primary">
+            {symbol}{maxRiskDollars.toFixed(0)} maximum
+          </div>
+        </div>
+      </div>
+
+      {/* Main recommendation */}
+      <div className={`rounded-xl p-5 mb-5 ${
+        optimalContracts <= 2
+          ? 'bg-primary/5 border border-primary/20'
+          : 'bg-orange-500/5 border border-orange-500/20'
+      }`}>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-xs text-muted-foreground mb-1">Recommended position size</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-4xl font-bold text-foreground">{optimalContracts}</span>
+              <span className="text-lg text-muted-foreground">contract{optimalContracts > 1 ? 's' : ''}</span>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Maximum risk: <span className="text-foreground font-medium">{symbol}{actualRisk.toFixed(0)}</span>
+              {' '}({actualRiskPercent.toFixed(1)}% of portfolio)
+            </p>
+          </div>
+
+          <div className="text-right">
+            {potentialProfit !== null && (
+              <div className="mb-2">
+                <p className="text-xs text-muted-foreground">Potential profit</p>
+                <p className="text-lg font-bold text-emerald-400">{symbol}{potentialProfit.toFixed(0)}</p>
+              </div>
+            )}
+            {riskRewardRatio !== null && (
+              <div>
+                <p className="text-xs text-muted-foreground">Risk/Reward ratio</p>
+                <p className="text-lg font-bold text-foreground">1 : {riskRewardRatio}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Per-contract breakdown */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <div className="bg-secondary/30 rounded-md p-3">
+          <p className="text-xs text-muted-foreground mb-1">Max loss / contract</p>
+          <p className="text-sm font-bold text-red-400">{symbol}{maxLossPerContract.toFixed(0)}</p>
+        </div>
+        <div className="bg-secondary/30 rounded-md p-3">
+          <p className="text-xs text-muted-foreground mb-1">Max profit / contract</p>
+          <p className="text-sm font-bold text-emerald-400">
+            {maxProfitPerContract ? `${symbol}${maxProfitPerContract.toFixed(0)}` : 'Unlimited'}
+          </p>
+        </div>
+        <div className="bg-secondary/30 rounded-md p-3">
+          <p className="text-xs text-muted-foreground mb-1">50% profit target</p>
+          <p className="text-sm font-bold text-primary">
+            {maxProfitPerContract
+              ? `${symbol}${(optimalContracts * maxProfitPerContract * 0.5).toFixed(0)}`
+              : '—'}
+          </p>
+        </div>
+        <div className="bg-secondary/30 rounded-md p-3">
+          <p className="text-xs text-muted-foreground mb-1">Stop loss (2× premium)</p>
+          <p className="text-sm font-bold text-orange-400">
+            {symbol}{(actualRisk * 2).toFixed(0)}
+          </p>
+        </div>
+      </div>
+
+      {/* Comparison table */}
+      <div className="mb-5">
+        <p className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-3">
+          Risk level comparison — {symbol}{portfolioSize.toLocaleString()} portfolio
+        </p>
+        <div className="grid grid-cols-3 gap-3">
+          {tiers.map(tier => (
+            <button
+              key={tier.pct}
+              onClick={() => setRiskPercent(tier.pct)}
+              className={`p-3 rounded-lg border text-left transition-all ${
+                riskPercent === tier.pct
+                  ? 'border-primary/40 bg-primary/5'
+                  : 'border-border bg-secondary/20 hover:bg-secondary/40'
+              }`}
+            >
+              <div className={`text-xs font-semibold mb-1 ${tier.colour}`}>{tier.label}</div>
+              <div className="text-lg font-bold">{tier.contracts} contract{tier.contracts > 1 ? 's' : ''}</div>
+              <div className="text-xs text-muted-foreground">
+                {symbol}{tier.maxRisk.toFixed(0)} risk ({tier.pct}%)
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Professional rules reminder */}
+      <div className="bg-secondary/20 border border-border rounded-lg p-4 mb-4">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+          Professional Position Sizing Rules
+        </p>
+        <div className="grid md:grid-cols-2 gap-2">
+          {[
+            { ok: riskPercent <= 2, text: riskPercent <= 2 ? `${riskPercent}% risk is within the 2% professional standard` : `${riskPercent}% risk is above the 2% standard — use with caution` },
+            { ok: true, text: `Never risk more than 5% on any single trade regardless of conviction` },
+            { ok: optimalContracts >= 1, text: `Start with ${Math.min(optimalContracts, 2)} contract${Math.min(optimalContracts, 2) > 1 ? 's' : ''} until you have 3+ months of consistent results` },
+            { ok: true, text: `Set your stop loss at ${symbol}${(actualRisk * 2).toFixed(0)} (2× premium received) before entering` },
+          ].map((rule, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span className={`text-xs shrink-0 mt-0.5 ${rule.ok ? 'text-primary' : 'text-orange-400'}`}>
+                {rule.ok ? '✓' : '△'}
+              </span>
+              <p className="text-xs text-muted-foreground leading-relaxed">{rule.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Warnings */}
+      {warnings.length > 0 && (
+        <div className="bg-orange-500/5 border border-orange-500/20 rounded-lg p-4">
+          {warnings.map((w, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span className="text-orange-400 text-xs shrink-0 mt-0.5">⚠</span>
+              <p className="text-xs text-orange-400/80 leading-relaxed">{w}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
+        Max loss figures are parsed from the AI strategy output and may be estimates.
+        Always verify exact risk on your broker platform before entering a trade.
+        All values shown per {optimalContracts} contract{optimalContracts > 1 ? 's' : ''}.
+      </p>
+    </div>
+  )
+}
+
 
 function OutlookBadge({ outlook }: { outlook: string }) {
   const styles: Record<string, string> = { bullish: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', bearish: 'bg-red-500/10 text-red-400 border-red-500/20', neutral: 'bg-muted text-muted-foreground border-border', 'high-volatility': 'bg-orange-500/10 text-orange-400 border-orange-500/20' }
