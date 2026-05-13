@@ -549,23 +549,19 @@ export default function DashboardPage() {
                     <OutlookBadge outlook={result.strategy.marketOutlook} />
                   </div>
                   <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-3 flex-wrap mt-1">
                     <p className="text-sm text-muted-foreground">
-                      {result.marketData.ticker} · Generated {new Date(result.generatedAt).toLocaleTimeString('en-GB')}
+                      {result.marketData.ticker} &middot; Generated {new Date(result.generatedAt).toLocaleTimeString('en-GB')}
                     </p>
                     <button
                       onClick={() => isWatched ? removeFromWatchlist(result.marketData.ticker) : addToWatchlist(result.marketData.ticker)}
                       disabled={watchlistLoading}
-                      className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded border transition-colors ${
-                        isWatched
-                          ? 'bg-primary/10 text-primary border-primary/20 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20'
-                          : 'bg-card text-muted-foreground border-border hover:text-primary hover:border-primary/30'
-                      }`}
+                      className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded border transition-colors ${isWatched ? 'bg-primary/10 text-primary border-primary/20' : 'bg-card text-muted-foreground border-border hover:text-primary hover:border-primary/30'}`}
                     >
-                      {isWatched
-                        ? <><BookmarkCheck className="h-3 w-3" />&nbsp;Watching</>
-                        : <><Bookmark className="h-3 w-3" />&nbsp;Watch</>
-                      }
+                      {isWatched ? <><BookmarkCheck className="h-3 w-3" /> Watching</> : <><Bookmark className="h-3 w-3" /> Watch</>}
                     </button>
+                  </div>
+
                   </div>
                 </div>
                 <div className="text-right shrink-0">
