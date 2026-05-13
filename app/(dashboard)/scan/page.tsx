@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { UserButton } from '@clerk/nextjs'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import Nav from '@/components/layout/nav'
 import {
   TrendingUp, RefreshCw, Loader2, AlertCircle,
   ArrowUpRight, ArrowDownRight, Activity,
@@ -100,20 +101,7 @@ export default function ScanPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
 
-      <nav className="border-b border-border px-6 py-4 sticky top-0 bg-background/95 backdrop-blur z-10">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-primary" />
-            <span className="text-lg font-bold tracking-tight">OptionsAI</span>
-          </Link>
-          <div className="flex items-center gap-6">
-            <Link href="/dashboard" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Dashboard</Link>
-            <Link href="/scan" className="text-sm text-primary font-medium">Market Scan</Link>
-            <Link href="/strategies" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Strategies</Link>
-            <UserButton afterSignOutUrl="/" />
-          </div>
-        </div>
-      </nav>
+      <Nav />
 
       <main className="max-w-6xl mx-auto px-6 py-10">
 
