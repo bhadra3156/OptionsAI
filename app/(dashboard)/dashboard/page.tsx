@@ -1148,40 +1148,64 @@ function PnLCurveCard({
   const steps = 80
   const stepSize = (maxPrice - minPrice) / steps
 
-  // Parse max profit/loss for premium estimates
+  // Parse dollar amounts from strategy metrics strings like "$41" or "$1,200"
   const parseAmount = (s: string): number => {
     const match = s.replace(/,/g, '').match(/[\d.]+/)
     return match ? parseFloat(match[0]) : 100
   }
 
-  const totalCredit = parseAmount(maxProfit)
-  const totalDebit = parseAmount(maxLoss)
+  const totalCredit = parseAmount(maxProfit)    // net credit received (e.g. 41)
+  const totalMaxLoss = parseAmount(maxLoss)      // max loss per contract (e.g. 159)
+  const spreadWidth = totalCredit + totalMaxLoss // total spread width x100 (e.g. 200)
 
-  // Estimate per-leg premium from total credit/debit
   const sellLegs = legs.filter(l => l.action === 'sell')
   const buyLegs = legs.filter(l => l.action === 'buy')
-  const perLegPremium = legs.length > 0
-    ? (totalCredit / Math.max(sellLegs.length, 1)) / 100
-    : 1.0
+  const isCreditStrategy = sellLegs.length >= buyLegs.length
 
-  // Generate P&L curve data points
+  // KEY FIX: Proper per-leg premium distribution
+  // Credit strategy (iron condor, CSP, credit spread):
+  //   At current price (all legs OTM), intrinsic value = 0 for all legs
+  //   P&L should equal +totalCredit (the full net credit received)
+  //   This works when: sum(sell premiums) - sum(buy premiums) = totalCredit / 100
+  const getLegPremium = (leg: typeof legs[0]): number => {
+    if (isCreditStrategy) {
+      if (leg.action === 'sell') {
+        // Each sell leg contributes equally to the gross credit
+        // Gross credit per sell leg = (totalCredit + protection cost) / numSellLegs
+        const grossCreditPerSell = spreadWidth / Math.max(sellLegs.length * 2, 1) / 100
+        return grossCreditPerSell
+      } else {
+        // Each buy leg costs the protection premium
+        const protectionCostPerBuy = (spreadWidth - totalCredit) / Math.max(buyLegs.length, 1) / 100
+        return protectionCostPerBuy
+      }
+    } else {
+      // Debit strategy: net debit = totalCredit field (confusingly named)
+      if (leg.action === 'buy') {
+        const grossDebitPerBuy = spreadWidth / Math.max(buyLegs.length * 2, 1) / 100
+        return grossDebitPerBuy
+      } else {
+        const creditReceivedPerSell = (spreadWidth - totalCredit) / Math.max(sellLegs.length, 1) / 100
+        return creditReceivedPerSell
+      }
+    }
+  }
+
+  // Generate P&L curve data points across the price range
   const dataPoints: Array<{ spotPrice: number; pnl: number }> = []
 
   for (let i = 0; i <= steps; i++) {
     const spotPrice = minPrice + i * stepSize
     let totalPnl = 0
     legs.forEach(leg => {
-      // Estimate individual leg premium
-      const isSell = leg.action === 'sell'
-      const legPremium = isSell
-        ? (totalCredit / Math.max(sellLegs.length, 1)) / 100
-        : (totalDebit / Math.max(buyLegs.length, 1)) / 100
-      totalPnl += calcOptionValue(spotPrice, leg.strike, leg.type, leg.action, leg.quantity, legPremium)
+      totalPnl += calcOptionValue(
+        spotPrice, leg.strike, leg.type, leg.action, leg.quantity, getLegPremium(leg)
+      )
     })
     dataPoints.push({ spotPrice, pnl: Math.round(totalPnl * 100) / 100 })
   }
 
-  // Chart dimensions
+    // Chart dimensions
   const chartWidth = 580
   const chartHeight = 200
   const paddingLeft = 55
