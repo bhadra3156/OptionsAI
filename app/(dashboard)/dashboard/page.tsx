@@ -27,41 +27,32 @@ function estimateGreeks(
   type: 'call' | 'put'
 ) {
   const iv = iv30Percent / 100
-  const t = dte / 365
+  const t = Math.max(dte, 1) / 365
   const sqrtT = Math.sqrt(t)
-
-  // Estimate delta from moneyness
-  // ATM options have delta ~0.50 for calls, ~-0.50 for puts
-  // OTM delta decreases, ITM delta increases
-  const moneyness = (price - strike) / price
+  const moneyness = (price - strike) / (price * iv * sqrtT)
   let rawDelta: number
-
   if (type === 'call') {
-    rawDelta = Math.max(0.01, Math.min(0.99, 0.5 + moneyness * 2.5))
+    rawDelta = Math.max(0.02, Math.min(0.98, 0.5 + moneyness * 0.2))
   } else {
-    rawDelta = Math.max(-0.99, Math.min(-0.01, -0.5 + moneyness * 2.5))
+    rawDelta = Math.max(-0.98, Math.min(-0.02, -0.5 + moneyness * 0.2))
   }
-
-  // Gamma: highest at ATM, decays with time
-  // Approximation: gamma ≈ 0.4 / (price × iv × sqrtT)
-  const gamma = Math.max(0, 0.4 / (price * iv * sqrtT * 10))
-
-  // Theta: time decay per day
-  // Approximation: theta ≈ -(price × iv × 0.4) / (2 × sqrt(365 × dte))
-  const thetaPerDay = -(price * iv * 0.4) / (2 * Math.sqrt(365 * Math.max(dte, 1))) / 100
-
-  // Vega: sensitivity to 1% change in IV
-  // Approximation: vega ≈ price × sqrtT × 0.4 / 100
+  const gamma = Math.max(0.0001, 0.4 * Math.exp(-0.5 * moneyness * moneyness) / (price * iv * sqrtT))
+  const thetaPerDay = (price * iv * 0.4) / (2 * Math.sqrt(365 / Math.max(dte, 1))) / 100
   const vega = (price * sqrtT * 0.4) / 100
-
-  // Flip signs for sell positions
-  const multiplier = action === 'sell' ? -1 : 1
-
-  return {
-    delta: Math.round(rawDelta * multiplier * 1000) / 1000,
-    gamma: Math.round(gamma * multiplier * 10000) / 10000,
-    theta: Math.round(thetaPerDay * multiplier * 100) / 100,
-    vega: Math.round(vega * multiplier * 100) / 100,
+  if (action === 'sell') {
+    return {
+      delta: Math.round(-rawDelta * 1000) / 1000,
+      gamma: Math.round(-gamma * 10000) / 10000,
+      theta: Math.round(thetaPerDay * 100) / 100,
+      vega: Math.round(-vega * 100) / 100,
+    }
+  } else {
+    return {
+      delta: Math.round(rawDelta * 1000) / 1000,
+      gamma: Math.round(gamma * 10000) / 10000,
+      theta: Math.round(-thetaPerDay * 100) / 100,
+      vega: Math.round(vega * 100) / 100,
+    }
   }
 }
 
