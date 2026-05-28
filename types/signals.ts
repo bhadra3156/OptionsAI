@@ -5,9 +5,13 @@
 // Single source of truth for the shape of signals data across the app.
 // Every signals-related file (lib, api, components) imports from here.
 //
-// Mirrors the Supabase schema in docs/supabase-signals-migration.sql.
+// Mirrors the Supabase schema in docs/supabase-signals-migration-v2.sql.
 // If you change the schema, change this file too — or things will break in
 // confusing ways at runtime that TypeScript can't catch.
+//
+// v2 (28 May 2026): NAV updated from $10k assumption to £5k target. Currency
+// is GBP for the user's portfolio but USD for option prices (Yahoo returns USD).
+// We treat £5,000 as approximately $6,300 USD (rate ~1.26) — see SIGNAL_CONFIG.
 // =============================================================================
 
 import type { OptionsStrategy } from '@/types/strategy'
@@ -226,24 +230,30 @@ export function isClosed(s: Signal): boolean {
 }
 
 // -----------------------------------------------------------------------------
-// CONSTANTS
+// CONSTANTS — single source of truth for thresholds and config values
 // -----------------------------------------------------------------------------
+// IMPORTANT: NAV is in USD even though the user's account is GBP.
+// Reasoning: Yahoo Finance returns all option prices in USD. Comparing apples
+// to apples means doing risk math in USD. The user's £5,000 paper-trading
+// portfolio is treated as approximately $6,300 USD at a ~1.26 GBP→USD rate.
+// When live, if GBP/USD drifts >5% from this, we should revisit the constant.
 
 export const SIGNAL_CONFIG = {
-  // Stage 2 pre-filter thresholds
-  MIN_SCAN_SCORE: 75,
-  MIN_TOTAL_OI: 500,
-  EARNINGS_BLACKOUT_DAYS: 7,
-  IV_RANK_NEUTRAL_LOWER: 30,       // IVR between these = ambiguous
+  // Stage 2 pre-filter thresholds (deterministic, no AI involved)
+  MIN_SCAN_SCORE: 75,              // /scan must rate the ticker at least this
+  MIN_TOTAL_OI: 500,               // total open interest across the chain
+  EARNINGS_BLACKOUT_DAYS: 7,       // no buying options within this window
+  IV_RANK_NEUTRAL_LOWER: 30,       // IVR in this dead-zone = ambiguous regime
   IV_RANK_NEUTRAL_UPPER: 50,
-  DUPLICATE_TICKER_HOURS: 24,
+  DUPLICATE_TICKER_HOURS: 24,      // no re-signalling the same ticker within this
 
-  // Stage 3 qualification thresholds
-  MIN_CONFIDENCE: 80,
-  MIN_PROBABILITY_OF_PROFIT: 65,
-  MAX_BID_ASK_SPREAD_PCT: 10,
-  DEFAULT_PORTFOLIO_NAV: 10_000,
-  MAX_LOSS_PCT_OF_NAV: 5,
+  // Stage 3 qualification thresholds (Claude judges against these)
+  MIN_CONFIDENCE: 80,              // Claude's self-rated confidence floor
+  MIN_PROBABILITY_OF_PROFIT: 65,   // estimated POP from strategy
+  MAX_BID_ASK_SPREAD_PCT: 10,      // liquidity guard
+  DEFAULT_PORTFOLIO_NAV_USD: 6_300, // £5,000 ≈ $6,300 at 1.26 GBP→USD
+  MAX_LOSS_PCT_OF_NAV: 5,          // single trade can risk at most this %
+  // 5% of $6,300 = $315 max loss per trade
 
   // Telegram approval window
   APPROVAL_WINDOW_MINUTES: 15,
@@ -252,3 +262,8 @@ export const SIGNAL_CONFIG = {
   QUALIFICATION_MODEL: 'claude-opus-4-7',
   // Stage 1 reuses /scan which uses 'claude-sonnet-4-6'
 } as const
+
+// Convenience getter — the calculated max loss in USD
+export const MAX_LOSS_USD =
+  SIGNAL_CONFIG.DEFAULT_PORTFOLIO_NAV_USD * (SIGNAL_CONFIG.MAX_LOSS_PCT_OF_NAV / 100)
+// = 315
