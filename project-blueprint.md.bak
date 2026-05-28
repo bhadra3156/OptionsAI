@@ -1,0 +1,195 @@
+# OptionsAI — Project Blueprint
+
+> Last updated: 28 May 2026 — cleanup session aligning blueprint with shipped reality.
+> Anything marked ✅ DECIDED is locked. Anything marked 🔄 LIVE describes what currently ships.
+
+## What We Are Building
+A personal-use AI-powered options trading strategy website (with future potential to open to other users). Users enter a stock ticker and receive an institutional-grade options strategy recommendation powered by Claude AI and free market data from Yahoo Finance.
+
+## Builder Profile
+- Non-developer learning as they build
+- Based in Chester, UK
+- Using: VS Code (PowerShell), GitHub, Vercel, Claude
+
+---
+
+## Phase 1 — Vision ✅ DECIDED
+- **Product name:** OptionsAI
+- **Live URL:** https://options-ai-one.vercel.app
+- **Core promise:** Enter any ticker → receive a professional options strategy in seconds
+- **Target user:** Self-directed retail options traders (US-focused stocks, UK-based builder)
+- **Differentiator:** Institutional-grade AI reasoning + free live market data, not generic advice
+
+---
+
+## Phase 2 — Data Strategy 🔄 LIVE (changed from original plan)
+
+**Provider:** Yahoo Finance (free, scraped via cookie+crumb session)
+**Reason for change:** Polygon.io ($29/mo) was the original plan. The shipped reality is Yahoo Finance, which is free. We stay on Yahoo unless a specific data point we need becomes impossible to get from it.
+
+**Known Yahoo Finance limitations (be aware when designing features):**
+- Data is delayed approximately 15 minutes
+- Greeks (delta, gamma, theta, vega) are NOT returned — they are estimated client-side via a Black-Scholes-style approximation in `app/(dashboard)/dashboard/page.tsx`
+- VIX is sourced as `^VIX` (works) — the live `/market` page formerly used a VIXY ETF proxy, kept here as a fallback if `^VIX` ever fails
+- No formal API contract — Yahoo can change response shapes at any time, which is why every fetch path has defensive `null`-coalescing
+
+**Data points required (sourced from Yahoo):**
+- Current stock price ✅
+- Options chain (strikes, expiries, bid/ask) ✅
+- 30-day implied volatility (IV30) ✅
+- IV Rank ⚠ (calculated, not fetched — we compute it from historical IV ourselves)
+- Greeks ⚠ (estimated, not fetched — see note above)
+- Open Interest and Volume ✅
+- Put/Call Ratio ✅
+- Days to Earnings ✅
+- VIX level ✅ (via `^VIX`)
+
+---
+
+## Phase 3 — AI Strategy ✅ DECIDED (model strings updated 28 May 2026)
+
+**Default model:** `claude-sonnet-4-6` — for fast scans, ticker analysis, and most calls.
+**Premium model:** `claude-opus-4-7` — reserved for the highest-stakes calls, e.g. the final qualification stage of `/signals` where reasoning quality matters more than speed/cost.
+
+**Reason for change:** Earlier docs referenced `claude-sonnet-4-20250514` (Sonnet 4, May 2025) and shipped code referenced `claude-sonnet-4-5`. Both are real but superseded. As of May 2026, Sonnet 4.6 is the recommended default; Opus 4.7 is the flagship.
+
+**Important:** Model strings are *pinned snapshots* — they don't auto-update. When new generations ship, we'll need to revisit and bump.
+
+**Approach:** Structured JSON output (see `strategy-output-schema.json`)
+**System prompt:** See `ai-system-prompt.md`
+**Key rules baked in:**
+- IV Rank > 50 → selling strategies
+- IV Rank < 30 → buying strategies
+- Never buy options within 7 days of earnings
+- 30–45 DTE entry for selling strategies
+- Close at 50% profit OR 21 DTE (whichever first)
+
+---
+
+## Phase 4 — Legal & Compliance ✅ NOTED
+- **UK law:** Output must NOT constitute "financial advice" under FSMA 2000
+- **Mandatory disclaimer on every strategy page:**
+  > "This analysis is for educational and informational purposes only. It does not constitute financial advice. Options trading involves significant risk and is not suitable for all investors. You may lose more than your initial investment."
+- **Language rules:** Never use "you should buy" or "this will profit" — use "this strategy may" or "historically this approach"
+- **UK GDPR:** User data stored in Supabase, privacy policy required before opening to public
+- **Recommendation:** Consult a UK solicitor before monetising
+
+---
+
+## Phase 5 — Business Model ✅ DECIDED (future, post-personal-launch)
+- **Current state:** Personal use only. No Stripe wired up yet.
+- **Future pricing tiers (when opened to public):**
+  - Free: 3 analyses per day
+  - Pro: £19/mo — unlimited analyses + saved history
+  - Team: £49/mo — multiple users
+- **Cost per query estimate:** ~£0.01–0.03 (Claude API + free Yahoo + hosting)
+- **Break-even:** ~6 paying Pro users covers all running costs
+- **Payment processor (future):** Stripe
+
+---
+
+## Phase 6 — UX & Design ✅ DECIDED (matches live site)
+- **Framework:** Next.js 14 App Router
+- **Styling:** Tailwind CSS with custom HSL CSS variables in `app/globals.css`
+- **Theme:** Forced dark mode only — Bloomberg/trading-terminal aesthetic
+- **Design tokens (from `app/globals.css`):**
+  - Background: near-black (HSL 0 0% 3%)
+  - Cards: very dark grey (HSL 0 0% 6%)
+  - Primary/accent: vivid green (HSL 142 71% 45%) — used for positive signals, CTAs
+  - Destructive: red (HSL 0 84% 60%) — used for warnings, losses
+  - Muted text: mid-grey (HSL 215 20% 55%)
+- **Component approach:** Custom Tailwind components in `components/`. No shadcn/ui package is installed — we use `clsx` + `tailwind-merge` for class composition.
+- **Live screens:**
+  1. `/` — Landing page
+  2. `/dashboard` — Single-ticker strategy analysis
+  3. `/market` — VIX + indices + sector ETFs + regime classifier
+  4. `/scan` — Bulk scan of 30 tickers with AI scoring
+  5. `/trades` — Manual trade journal (P&L tracker)
+  6. `/signals` — 🚧 To be built — automated AI-qualified trade signals with Telegram approval flow
+
+---
+
+## Phase 7 — Technical Architecture ✅ DECIDED
+
+### Full Stack (what actually ships)
+| Layer | Tool | Notes |
+|---|---|---|
+| Framework | Next.js 14 (App Router) | Strict app/ directory, no pages/ |
+| Language | TypeScript | strict mode in tsconfig |
+| Styling | Tailwind CSS + custom HSL tokens | No shadcn package; components hand-rolled |
+| Database | Supabase (PostgreSQL) | Tables: analyses, trades, watchlist |
+| Auth | Clerk | `middleware.ts` protects everything except `/`, `/sign-in`, `/sign-up` |
+| Market Data | Yahoo Finance (free, scraped) | Cookie+crumb session in `lib/yahoo.ts` and route handlers |
+| AI | Anthropic Claude API | Default sonnet-4-6, opus-4-7 for stage-2 signal qualification |
+| Hosting | Vercel | Auto-deploy from GitHub main |
+| Version Control | GitHub | Push to main triggers Vercel build |
+
+### Folder Structure (live)
+```
+app/
+  (auth)/                — sign-in / sign-up (Clerk)
+  (dashboard)/           — protected pages: dashboard, market, scan, trades, strategies, signals
+  api/
+    analyze/             — POST: single-ticker analysis
+    scan/                — GET: 30-ticker bulk scan
+    market/              — GET: VIX + indices + sectors
+    trades/              — GET/POST list + create
+    trades/[id]/         — PATCH/DELETE close + delete
+    watchlist/           — GET/POST/DELETE watchlist CRUD
+    debug-scan/          — dev-only diagnostic endpoint
+    signals/             — 🚧 To be built
+    telegram/webhook/    — 🚧 To be built
+  page.tsx               — landing page
+  layout.tsx             — root layout + Clerk provider
+  globals.css            — design tokens (HSL variables)
+components/
+  layout/                — nav.tsx
+  strategy/              — strategy result display components
+  ui/                    — base utility components
+lib/
+  anthropic.ts           — Claude client + generateStrategy()
+  yahoo.ts               — Yahoo Finance fetcher (assumed; not yet seen by Claude)
+  scanner.ts             — Multi-ticker scan logic
+  supabase.ts            — supabaseAdmin client
+  utils.ts               — isValidTicker + helpers
+types/
+  market.ts              — MarketData + OptionsContract
+  strategy.ts            — AI strategy output types
+  trades.ts              — Trade + TradeStats + CreateTradeInput
+middleware.ts            — Clerk route protection
+```
+
+### Database Schema (Supabase — current state)
+```sql
+-- analyses: every ticker analysis the user runs
+analyses(id, user_id, ticker, strategy_json, market_snapshot, created_at)
+
+-- trades: the manual P&L journal
+trades(id, user_id, ticker, strategy_name, entry_date, contracts,
+       premium_received, premium_paid, max_loss, exit_date, exit_price,
+       exit_reason, pnl, pnl_percent, status, notes, created_at, updated_at)
+
+-- watchlist: tickers the user is tracking
+watchlist(id, user_id, ticker, created_at)
+
+-- signals: 🚧 to be added when /signals is built
+-- approvals: 🚧 to be added for Telegram YES/NO state
+```
+
+---
+
+## Phase 8 — Build Status (updated 28 May 2026)
+- [x] Phase 1: Project setup and environment
+- [x] Phase 2: Landing page
+- [x] Phase 3: Authentication (Clerk)
+- [x] Phase 4: Market data integration (Yahoo Finance)
+- [x] Phase 5: AI strategy engine (Claude API)
+- [x] Phase 6: Strategy display UI (`/dashboard`)
+- [x] Phase 7: Bulk market scanner (`/scan`)
+- [x] Phase 8: Market conditions dashboard (`/market`)
+- [x] Phase 9: Manual trade journal (`/trades`)
+- [ ] Phase 10: Documentation cleanup ← current session
+- [ ] Phase 11: `/signals` page — AI signal generator with Telegram approval flow (manual execution)
+- [ ] Phase 12: Vercel Cron scheduled scans
+- [ ] Phase 13: (Optional, future) Public launch + Stripe payments
+- [ ] Phase 14: (Optional, future) Full IBKR auto-execution (requires ~$15/mo for IBKR data + hosting)

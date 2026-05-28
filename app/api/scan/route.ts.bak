@@ -45,7 +45,7 @@ Return ONLY valid JSON — an object where keys are ticker symbols and values ar
 Example: {"SPY": 45, "TSLA": 78, "AAPL": 62}`
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-5',
       max_tokens: 500,
       messages: [{ role: 'user', content: scoringPrompt }],
     })

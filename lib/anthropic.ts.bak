@@ -129,7 +129,7 @@ export async function generateStrategy(marketData: MarketData): Promise<OptionsS
   let webContext = ''
   try {
     const searchResponse = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-5',
       max_tokens: 800,
       tools: [{ type: 'web_search_20250305' as const, name: 'web_search' }],
       messages: [{
@@ -168,7 +168,7 @@ ${webContext}
 Use both the live market data AND the market context to produce the highest quality analysis possible. The rationale must reference specific numbers from the live data and end with a clear VERDICT line.`
 
   const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-sonnet-4-5',
     max_tokens: 2000,
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: userMessage }]

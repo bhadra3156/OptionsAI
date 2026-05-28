@@ -1,0 +1,60 @@
+# OptionsAI — Environment Variables Template
+# =============================================
+# HOW TO USE THIS FILE:
+# 1. In your project root folder, create a file called exactly: .env.local
+# 2. Copy everything below into it
+# 3. Replace every "xxxxx" with your real API keys
+# 4. NEVER commit .env.local to GitHub — it is in .gitignore automatically
+# 5. Add these same variables to Vercel dashboard before deploying
+#
+# WHERE TO GET EACH KEY:
+# Clerk keys        → https://dashboard.clerk.com → your app → API Keys
+# Supabase keys     → https://app.supabase.com → your project → Settings → API
+# Anthropic key     → https://console.anthropic.com → API Keys
+# =============================================
+
+# ── CLERK AUTHENTICATION ──────────────────────────────────────────────────────
+# Get from: https://dashboard.clerk.com → your app → API Keys
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_xxxxx
+CLERK_SECRET_KEY=sk_test_xxxxx
+
+# These control where users go after signing in/up — do not change these values
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard
+NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard
+
+# ── SUPABASE DATABASE ─────────────────────────────────────────────────────────
+# Get from: https://app.supabase.com → your project → Settings → API
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=xxxxx
+# WARNING: Service role key has full database access — never use NEXT_PUBLIC_ prefix
+SUPABASE_SERVICE_ROLE_KEY=xxxxx
+
+# ── ANTHROPIC CLAUDE AI ───────────────────────────────────────────────────────
+# Get from: https://console.anthropic.com → API Keys
+# WARNING: Never put this in a NEXT_PUBLIC_ variable — server-side only
+# Default model: claude-sonnet-4-6 (used in most routes)
+# Premium model: claude-opus-4-7 (used for /signals stage-2 qualification, when built)
+ANTHROPIC_API_KEY=sk-ant-xxxxx
+
+# ── APP CONFIGURATION ─────────────────────────────────────────────────────────
+# Local development — change to your real domain when deployed to Vercel
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# =============================================
+# THE VARIABLES BELOW ARE NOT YET REQUIRED.
+# They will be added when the corresponding features are built.
+# Until then, leave them commented out or omit them entirely.
+# =============================================
+
+# ── TELEGRAM BOT (for /signals page — not yet built) ──────────────────────────
+# Get TELEGRAM_BOT_TOKEN by messaging @BotFather on Telegram → /newbot
+# Get TELEGRAM_CHAT_ID by messaging @userinfobot on Telegram
+# TELEGRAM_BOT_TOKEN=
+# TELEGRAM_CHAT_ID=
+
+# ── CRON SECRET (for Vercel Cron — not yet built) ─────────────────────────────
+# A random string used to verify scheduled scan requests are from Vercel Cron,
+# not from the public internet. Generate with: openssl rand -hex 32
+# CRON_SECRET=
