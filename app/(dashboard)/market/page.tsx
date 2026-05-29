@@ -1,7 +1,5 @@
 // FILE: app/(dashboard)/market/page.tsx
-// Market Conditions Dashboard — the first page professionals check every morning.
-// Shows VIX, SPY trend, sector rotation, and market regime indicator.
-// All data from Yahoo Finance (free, no API key needed).
+// Market Conditions Dashboard with localStorage persistence + timestamp on cached view
 
 'use client'
 
@@ -13,7 +11,7 @@ import {
   TrendingUp, TrendingDown, Minus, RefreshCw,
   Loader2, AlertCircle, Activity, BarChart3,
   Shield, Zap, ArrowUpRight, ArrowDownRight,
-  Sun, Cloud, CloudRain, AlertTriangle
+  Sun, Cloud, CloudRain, AlertTriangle, Clock
 } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -93,21 +91,42 @@ function determineRegime(vix: number, spyChangePercent: number): MarketRegime {
   }
 }
 
-// ── Main Component ─────────────────────────────────────────────────────────
+const MARKET_STORAGE_KEY = 'optionsai_last_market_snapshot'
 
 export default function MarketPage() {
   const [data, setData] = useState<MarketSnapshot | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isCached, setIsCached] = useState(false)
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (forceFresh = false) => {
+    if (!forceFresh) {
+      const cached = localStorage.getItem(MARKET_STORAGE_KEY)
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached) as MarketSnapshot
+          setData(parsed)
+          setIsCached(true)
+          return
+        } catch (e) {
+          console.error('Failed to parse cached market data')
+        }
+      }
+    }
+
     setLoading(true)
     setError(null)
+    setIsCached(false)
+
     try {
       const res = await fetch('/api/market')
       const json = await res.json()
-      if (!res.ok) { setError(json.error ?? 'Failed to load market data'); return }
+      if (!res.ok) {
+        setError(json.error ?? 'Failed to load market data')
+        return
+      }
       setData(json as MarketSnapshot)
+      localStorage.setItem(MARKET_STORAGE_KEY, JSON.stringify(json))
     } catch {
       setError('Network error. Please try again.')
     } finally {
@@ -115,35 +134,47 @@ export default function MarketPage() {
     }
   }, [])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => {
+    fetchData(false)
+  }, [fetchData])
+
+  const handleRefresh = () => {
+    fetchData(true)
+  }
 
   const RegimeIcon = data ? {
     sun: Sun, cloud: Cloud, rain: CloudRain, storm: AlertTriangle
   }[data.regime.icon] : Activity
 
+  const cachedTime = data && isCached 
+    ? new Date(data.generatedAt).toLocaleTimeString('en-GB', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+      })
+    : ''
+
   return (
     <div className="min-h-screen bg-background text-foreground">
-
       <Nav />
 
       <main className="max-w-6xl mx-auto px-6 py-10">
-
         <div className="flex items-start justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold tracking-tight mb-2">Market Conditions</h1>
             <p className="text-muted-foreground">
               {data
-                ? `Check this before analysing any ticker · Updated ${new Date(data.generatedAt).toLocaleTimeString('en-GB')}`
-                : 'Loading live market data...'}
+                ? `Check this before analysing any ticker · ${isCached ? 'Cached' : 'Live'}`
+                : 'Loading market snapshot...'}
             </p>
           </div>
           <button
-            onClick={fetchData}
+            onClick={handleRefresh}
             disabled={loading}
             className="flex items-center gap-2 bg-card border border-border text-sm font-medium px-4 py-2 rounded-md hover:bg-secondary/50 transition-colors disabled:opacity-50"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {loading ? 'Loading...' : 'Refresh'}
+            {loading ? 'Refreshing...' : 'Refresh'}
           </button>
         </div>
 
@@ -152,7 +183,7 @@ export default function MarketPage() {
             <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
             <div>
               <p className="text-sm text-destructive">{error}</p>
-              <button onClick={fetchData} className="text-xs text-destructive/70 hover:text-destructive underline mt-1">Try again</button>
+              <button onClick={handleRefresh} className="text-xs text-destructive/70 hover:text-destructive underline mt-1">Try again</button>
             </div>
           </div>
         )}
@@ -169,8 +200,19 @@ export default function MarketPage() {
 
         {data && !loading && (
           <div className="space-y-5">
+            {isCached && (
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-md px-4 py-3 flex items-center gap-3">
+                <Clock className="h-5 w-5 text-yellow-500" />
+                <div>
+                  <p className="text-sm text-yellow-600">
+                    Showing cached market snapshot from <span className="font-mono font-medium">{cachedTime}</span>
+                  </p>
+                  <p className="text-xs text-yellow-600/70">Click Refresh for latest live data</p>
+                </div>
+              </div>
+            )}
 
-            {/* ── Market Regime Card ─────────────────────────────────── */}
+            {/* Market Regime Card */}
             <div className={`border rounded-xl p-6 ${
               data.regime.vixLevel === 'low' ? 'bg-primary/5 border-primary/20' :
               data.regime.vixLevel === 'elevated' ? 'bg-orange-500/5 border-orange-500/20' :
@@ -211,9 +253,8 @@ export default function MarketPage() {
               </div>
             </div>
 
-            {/* ── VIX + Major Indices ────────────────────────────────── */}
+            {/* VIX + Major Indices */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {/* VIX */}
               <div className="bg-card border border-border rounded-lg p-5 col-span-2 md:col-span-1">
                 <div className="flex items-center gap-2 mb-1">
                   <Activity className="h-4 w-4 text-muted-foreground" />
@@ -238,35 +279,12 @@ export default function MarketPage() {
                 </div>
               </div>
 
-              {/* SPY */}
-              <IndexCard
-                label="SPY — S&P 500"
-                price={data.spy.price}
-                change={data.spy.change}
-                changePercent={data.spy.changePercent}
-                trend={data.spy.trend}
-              />
-
-              {/* QQQ */}
-              <IndexCard
-                label="QQQ — Nasdaq 100"
-                price={data.qqq.price}
-                change={data.qqq.change}
-                changePercent={data.qqq.changePercent}
-                trend={data.qqq.changePercent >= 0.1 ? 'up' : data.qqq.changePercent <= -0.1 ? 'down' : 'flat'}
-              />
-
-              {/* IWM */}
-              <IndexCard
-                label="IWM — Russell 2000"
-                price={data.iwm.price}
-                change={data.iwm.change}
-                changePercent={data.iwm.changePercent}
-                trend={data.iwm.changePercent >= 0.1 ? 'up' : data.iwm.changePercent <= -0.1 ? 'down' : 'flat'}
-              />
+              <IndexCard label="SPY — S&P 500" price={data.spy.price} change={data.spy.change} changePercent={data.spy.changePercent} trend={data.spy.trend} />
+              <IndexCard label="QQQ — Nasdaq 100" price={data.qqq.price} change={data.qqq.change} changePercent={data.qqq.changePercent} trend={data.qqq.changePercent >= 0.1 ? 'up' : data.qqq.changePercent <= -0.1 ? 'down' : 'flat'} />
+              <IndexCard label="IWM — Russell 2000" price={data.iwm.price} change={data.iwm.change} changePercent={data.iwm.changePercent} trend={data.iwm.changePercent >= 0.1 ? 'up' : data.iwm.changePercent <= -0.1 ? 'down' : 'flat'} />
             </div>
 
-            {/* ── Sector Rotation ────────────────────────────────────── */}
+            {/* Sector Rotation */}
             <div className="bg-card border border-border rounded-lg p-6">
               <div className="flex items-center gap-2 mb-5">
                 <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -276,14 +294,11 @@ export default function MarketPage() {
               <div className="space-y-2">
                 {[...data.sectors]
                   .sort((a, b) => b.changePercent - a.changePercent)
-                  .map(sector => (
-                    <SectorRow key={sector.ticker} sector={sector} />
-                  ))
-                }
+                  .map(sector => <SectorRow key={sector.ticker} sector={sector} />)}
               </div>
             </div>
 
-            {/* ── Trading Checklist for Today ────────────────────────── */}
+            {/* Trading Checklist */}
             <div className="bg-card border border-border rounded-lg p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Shield className="h-4 w-4 text-primary" />
@@ -320,7 +335,7 @@ export default function MarketPage() {
               </div>
             </div>
 
-            {/* ── What to trade today ────────────────────────────────── */}
+            {/* What to trade today */}
             <div className="bg-card border border-border rounded-lg p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Zap className="h-4 w-4 text-primary" />
@@ -357,10 +372,9 @@ export default function MarketPage() {
             </div>
 
             <p className="text-xs text-muted-foreground text-center leading-relaxed">
-              Market data is delayed 15 minutes. VIX data sourced via VIXY ETF proxy.
+              Market data is delayed 15 minutes. VIX data sourced via VIXY ETF proxy.<br />
               This is for educational purposes only and does not constitute financial advice.
             </p>
-
           </div>
         )}
       </main>
@@ -368,7 +382,7 @@ export default function MarketPage() {
   )
 }
 
-// ── Sub-components ─────────────────────────────────────────────────────────
+// ── Sub-components (Unchanged) ─────────────────────────────────────────────
 
 function VixBar({ vix }: { vix: number }) {
   const pct = Math.min(100, Math.max(0, ((vix - 10) / 30) * 100))
@@ -411,10 +425,7 @@ function SectorRow({ sector }: { sector: SectorData }) {
       </div>
       <div className="flex-1 flex items-center gap-2">
         <div className="flex-1 h-5 bg-secondary/30 rounded overflow-hidden">
-          <div
-            className={`h-full rounded transition-all ${isUp ? 'bg-emerald-500/40' : 'bg-red-500/40'}`}
-            style={{ width: `${Math.max(barWidth, 1)}%` }}
-          />
+          <div className={`h-full rounded transition-all ${isUp ? 'bg-emerald-500/40' : 'bg-red-500/40'}`} style={{ width: `${Math.max(barWidth, 1)}%` }} />
         </div>
         <span className={`text-xs font-bold w-14 text-right ${isUp ? 'text-emerald-400' : 'text-red-400'}`}>
           {isUp ? '+' : ''}{sector.changePercent.toFixed(2)}%
