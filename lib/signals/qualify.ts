@@ -257,21 +257,13 @@ function buildUserMessage(input: QualificationInput): string {
 // -----------------------------------------------------------------------------
 
 function parseAndValidate(raw: string, ticker: string): QualificationResult {
-  const cleaned = raw
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/\s*```\s*$/i, '')
-    .trim()
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(cleaned)
-  } catch {
-    console.error(`[qualify] ${ticker}: JSON parse failed. Raw:`, raw.slice(0, 300))
+  const parsed = extractJsonObject(raw, ticker)
+  if (parsed === null) {
+    // extractJsonObject already logged the full raw response to console
     return {
       qualify: false,
       confidence: 0,
-      reason: 'Claude returned invalid JSON',
+      reason: `Claude returned invalid JSON (first 100 chars: ${raw.slice(0, 100).replace(/\n/g, ' ')}...)`,
     }
   }
 
@@ -317,4 +309,78 @@ function parseAndValidate(raw: string, ticker: string): QualificationResult {
     confidence: obj.confidence,
     strategy: obj.strategy as QualificationResult['strategy'],
   }
+}
+
+// -----------------------------------------------------------------------------
+// DEFENSIVE JSON EXTRACTOR
+// -----------------------------------------------------------------------------
+// Tries three increasingly aggressive parsing strategies before giving up.
+// Logs the FULL raw response to Vercel logs on total failure (so we can
+// diagnose what Opus is returning that we can't parse).
+
+function extractJsonObject(raw: string, ticker: string): unknown | null {
+  // Strategy 1: cleaned strip (handles ```json ... ``` fences and whitespace)
+  const cleaned = raw
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```\s*$/i, '')
+    .trim()
+
+  try {
+    return JSON.parse(cleaned)
+  } catch {
+    // fall through
+  }
+
+  // Strategy 2: find the first complete {...} substring via brace counting
+  // Handles cases like: "Here is my analysis:\n{...}\nLet me know if..."
+  // Also handles "```json\n{...}\n```\nNote: this assumes..." (postamble)
+  const firstBrace = raw.indexOf('{')
+  if (firstBrace !== -1) {
+    let depth = 0
+    let inString = false
+    let escapeNext = false
+    let closingBrace = -1
+
+    for (let i = firstBrace; i < raw.length; i++) {
+      const c = raw[i]
+      if (escapeNext) {
+        escapeNext = false
+        continue
+      }
+      if (c === '\\') {
+        escapeNext = true
+        continue
+      }
+      if (c === '"') {
+        inString = !inString
+        continue
+      }
+      if (inString) continue
+      if (c === '{') depth++
+      else if (c === '}') {
+        depth--
+        if (depth === 0) {
+          closingBrace = i
+          break
+        }
+      }
+    }
+
+    if (closingBrace !== -1) {
+      const extracted = raw.slice(firstBrace, closingBrace + 1)
+      try {
+        return JSON.parse(extracted)
+      } catch {
+        // fall through
+      }
+    }
+  }
+
+  // Total failure: log the full raw response for diagnostics
+  // Vercel keeps these in the Functions log for ~24 hours
+  console.error(
+    `[qualify] ${ticker}: ALL parse strategies failed. Full raw response (${raw.length} chars):\n${raw}\n[end of raw response]`
+  )
+  return null
 }

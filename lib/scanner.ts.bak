@@ -6,7 +6,6 @@ export const SCAN_TICKERS = {
   'Major ETFs': ['SPY', 'QQQ', 'IWM', 'GLD', 'TLT', 'XLE', 'XLF', 'XLK', 'ARKK', 'SLV'],
   'Mega Cap Tech': ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AMZN', 'TSLA', 'AMD', 'CRM', 'INTC'],
   'High IV Favourites': ['NFLX', 'COIN', 'PLTR', 'MSTR', 'RBLX', 'SNAP', 'UBER', 'HOOD', 'GME', 'BABA'],
-  'Cheap & Liquid': ['F', 'SOFI', 'NIO', 'AAL', 'JD'],
 }
 
 export const ALL_TICKERS = Object.values(SCAN_TICKERS).flat()

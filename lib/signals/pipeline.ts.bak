@@ -25,7 +25,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { fetchAllScanData } from '@/lib/scanner'
-import { fetchMarketDataForSignals as fetchMarketData } from '@/lib/signals/fetch'
+import { fetchMarketData } from '@/lib/yahoo'
 import Anthropic from '@anthropic-ai/sdk'
 import { preFilter, getSurvivors, getRejections } from '@/lib/signals/pre-filter'
 import type { PreFilterCandidate } from '@/lib/signals/pre-filter'
