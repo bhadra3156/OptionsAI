@@ -1,6 +1,6 @@
 // FILE: app/(dashboard)/scan/page.tsx
 // Market Scan page — scans 30 tickers and shows ranked opportunities.
-// IV Rank is estimated. Market Chameleon link on each row for real 52-week IV Rank.
+// Now with localStorage persistence + timestamp until manual Refresh.
 
 'use client'
 
@@ -12,7 +12,7 @@ import Nav from '@/components/layout/nav'
 import {
   TrendingUp, RefreshCw, Loader2, AlertCircle,
   ArrowUpRight, ArrowDownRight, Activity,
-  Zap, BarChart3, TrendingDown, ExternalLink
+  Zap, BarChart3, TrendingDown, ExternalLink, Clock
 } from 'lucide-react'
 import type { ScanResult } from '@/lib/scanner'
 
@@ -21,6 +21,8 @@ interface ScanResponse {
   scannedAt: string
   totalScanned: number
 }
+
+const SCAN_STORAGE_KEY = 'optionsai_last_scan'
 
 const SIGNAL_STYLES = {
   'SELL PREMIUM': 'bg-orange-500/10 text-orange-400 border-orange-500/20',
@@ -47,11 +49,27 @@ export default function ScanPage() {
   const [error, setError] = useState<string | null>(null)
   const [activeFilter, setActiveFilter] = useState<'all' | 'sell' | 'buy' | 'unusual'>('all')
   const [loadingStep, setLoadingStep] = useState('')
+  const [isCached, setIsCached] = useState(false)
 
-  const runScan = useCallback(async () => {
+  const runScan = useCallback(async (forceFresh = false) => {
+    if (!forceFresh) {
+      const cached = localStorage.getItem(SCAN_STORAGE_KEY)
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached) as ScanResponse
+          setData(parsed)
+          setIsCached(true)
+          return
+        } catch (e) {
+          console.error('Failed to parse cached scan')
+        }
+      }
+    }
+
     setLoading(true)
     setError(null)
     setData(null)
+    setIsCached(false)
 
     const steps = [
       'Connecting to markets...',
@@ -72,6 +90,7 @@ export default function ScanPage() {
       const json = await res.json()
       if (!res.ok) { setError(json.error ?? 'Scan failed.'); return }
       setData(json as ScanResponse)
+      localStorage.setItem(SCAN_STORAGE_KEY, JSON.stringify(json))
     } catch {
       setError('Network error. Please check your connection.')
     } finally {
@@ -81,21 +100,10 @@ export default function ScanPage() {
     }
   }, [])
 
-    useEffect(() => {
-    const cached = sessionStorage.getItem('last_scan_results');
-    if (cached) {
-      setData(JSON.parse(cached));
-    } else {
-      runScan();
-    }
-  }, [runScan]);
-
-  // Update storage when data changes
+  // Load cached data on mount
   useEffect(() => {
-    if (data) {
-      sessionStorage.setItem('last_scan_results', JSON.stringify(data));
-    }
-  }, [data]);
+    runScan(false)
+  }, [runScan])
 
   const getFilteredResults = () => {
     if (!data) return []
@@ -112,6 +120,14 @@ export default function ScanPage() {
   const buyCount = data?.results.filter(r => r.signal === 'BUY OPTIONS').length ?? 0
   const topScore = data?.results[0]?.aiScore ?? 0
 
+  const cachedTime = data && isCached 
+    ? new Date(data.scannedAt).toLocaleTimeString('en-GB', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+      })
+    : ''
+
   return (
     <div className="min-h-screen bg-background text-foreground">
 
@@ -124,12 +140,12 @@ export default function ScanPage() {
             <h1 className="text-3xl font-bold tracking-tight mb-2">Market Scan</h1>
             <p className="text-muted-foreground">
               {data
-                ? `${data.totalScanned} tickers scanned · ${new Date(data.scannedAt).toLocaleTimeString('en-GB')}`
+                ? `${data.totalScanned} tickers scanned · ${isCached ? 'Cached' : 'Live'}`
                 : 'Scanning 30 of the most liquid options markets...'}
             </p>
           </div>
           <button
-            onClick={runScan}
+            onClick={() => runScan(true)}
             disabled={loading}
             className="flex items-center gap-2 bg-card border border-border text-sm font-medium px-4 py-2 rounded-md hover:bg-secondary/50 transition-colors disabled:opacity-50"
           >
@@ -137,6 +153,19 @@ export default function ScanPage() {
             {loading ? 'Scanning...' : 'Refresh'}
           </button>
         </div>
+
+        {/* Cached Banner */}
+        {isCached && data && (
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-md px-4 py-3 mb-6 flex items-center gap-3">
+            <Clock className="h-5 w-5 text-yellow-500" />
+            <div>
+              <p className="text-sm text-yellow-600">
+                Cached scan from <span className="font-mono font-medium">{cachedTime}</span>
+              </p>
+              <p className="text-xs text-yellow-600/70">Click Refresh for latest scan</p>
+            </div>
+          </div>
+        )}
 
         {/* IV Rank notice */}
         <div className="bg-card border border-border rounded-lg px-5 py-3 mb-6 flex items-start gap-3">
@@ -180,7 +209,7 @@ export default function ScanPage() {
             <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
             <div>
               <p className="text-sm text-destructive font-medium mb-1">{error}</p>
-              <button onClick={runScan} className="text-xs text-destructive/70 hover:text-destructive underline">Try again</button>
+              <button onClick={() => runScan(true)} className="text-xs text-destructive/70 hover:text-destructive underline">Try again</button>
             </div>
           </div>
         )}
