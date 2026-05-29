@@ -67,7 +67,7 @@ export async function preFilter(
 
     // Rule 2: earnings blackout
     // -1 means unknown — we treat unknown as PASS (don't reject) but flag it
-    if (c.daysToEarnings >= 1 && c.daysToEarnings <= SIGNAL_CONFIG.EARNINGS_BLACKOUT_DAYS) {
+    if (c.daysToEarnings >= 0 && c.daysToEarnings <= SIGNAL_CONFIG.EARNINGS_BLACKOUT_DAYS) {
       return {
         ticker: c.ticker,
         pass: false,
