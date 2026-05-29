@@ -10,11 +10,12 @@
 //   - POST /api/signals/scan          (user-triggered, uses Clerk auth)
 //   - GET  /api/cron/scan-signals     (cron-triggered, uses CRON_SECRET auth)
 //
-// The pipeline is what actually does the work:
+// The pipeline:
 //   1. Stage 1: existing scan (fetches Yahoo data + scores 30 tickers w/ Sonnet)
 //   2. Stage 2: pre-filter survivors (deterministic rules + Supabase dup-check)
 //   3. Stage 3: deep qualify with Claude Opus, for each survivor in parallel
 //   4. Persist: insert qualified signals into Supabase `signals` table
+//   5. NEW (Phase D): send to Telegram, write telegram_approvals row
 //
 // TIMING:
 //   Vercel Hobby has 10s function limit. We cap candidates at 3 and parallelise
@@ -30,10 +31,12 @@ import { preFilter, getSurvivors, getRejections } from '@/lib/signals/pre-filter
 import type { PreFilterCandidate } from '@/lib/signals/pre-filter'
 import { qualifyWithClaude } from '@/lib/signals/qualify'
 import { buildIbkrTicket } from '@/lib/signals/ibkr-ticket'
+import { sendSignalToTelegram } from '@/lib/telegram/send'
 import { SIGNAL_CONFIG } from '@/types/signals'
 import type {
   QualificationInput,
   ContractSnapshot,
+  Signal,
 } from '@/types/signals'
 
 const anthropic = new Anthropic()
@@ -52,6 +55,7 @@ export interface ScanPipelineResult {
   preFilterPassed: number
   qualifiedCount: number
   persistedCount: number
+  telegramSentCount: number             // NEW in Phase D
   details: ScanDetail[]
   durationMs: number
 }
@@ -64,6 +68,7 @@ export interface ScanDetail {
   reason?: string
   confidence?: number
   signalId?: string
+  telegramSent?: boolean                // NEW in Phase D
 }
 
 // -----------------------------------------------------------------------------
@@ -85,6 +90,7 @@ export async function runScanPipeline(userId: string): Promise<ScanPipelineResul
       preFilterPassed: 0,
       qualifiedCount: 0,
       persistedCount: 0,
+      telegramSentCount: 0,
       details: [],
       durationMs: Date.now() - startedAt,
     }
@@ -138,9 +144,10 @@ export async function runScanPipeline(userId: string): Promise<ScanPipelineResul
     toQualify.map(ticker => qualifyOne(ticker, candidates))
   )
 
-  // ===== STAGE 4: persist =====
+  // ===== STAGES 4 + 5: persist + telegram =====
   let persistedCount = 0
   let qualifiedCount = 0
+  let telegramSentCount = 0
 
   for (let i = 0; i < qualifyResults.length; i++) {
     const ticker = toQualify[i]
@@ -209,30 +216,91 @@ export async function runScanPipeline(userId: string): Promise<ScanPipelineResul
     const { data: inserted, error: insertErr } = await supabaseAdmin
       .from('signals')
       .insert(row)
-      .select('id')
+      .select('*')
       .single()
 
-    if (insertErr) {
+    if (insertErr || !inserted) {
       console.error(`scan: failed to insert signal for ${ticker}:`, insertErr)
       details.push({
         ticker,
         scanScore: candidate.aiScore,
         ivRank: candidate.ivRank,
         stage: 'qualify-rejected',
-        reason: `DB insert failed: ${insertErr.message}`,
+        reason: `DB insert failed: ${insertErr?.message ?? 'no row returned'}`,
         confidence: qualification.confidence,
       })
       continue
     }
 
     persistedCount++
+
+    // ===== STAGE 5: send to Telegram =====
+    // Best-effort: a Telegram failure doesn't roll back the signal insert.
+    // We get an orphan signal (visible on /signals UI) instead of losing it.
+    const fullSignal = inserted as Signal
+    let telegramSent = false
+
+    try {
+      const { messageId, chatId } = await sendSignalToTelegram(fullSignal)
+      telegramSent = true
+      telegramSentCount++
+
+      // Record the telegram_approvals row
+      const expiresAt = new Date(
+        Date.now() + SIGNAL_CONFIG.APPROVAL_WINDOW_MINUTES * 60_000
+      ).toISOString()
+
+      const { error: approvalInsertErr } = await supabaseAdmin
+        .from('telegram_approvals')
+        .insert({
+          signal_id: fullSignal.id,
+          user_id: userId,
+          telegram_message_id: messageId,
+          chat_id: chatId,
+          delivered: true,
+          expires_at: expiresAt,
+        })
+
+      if (approvalInsertErr) {
+        // The message went out, but we couldn't log it. Not catastrophic —
+        // when the user taps a button, the webhook can still find the signal
+        // by ID. The audit trail is just incomplete.
+        console.warn(
+          `[pipeline] telegram_approvals insert failed for ${ticker}:`,
+          approvalInsertErr
+        )
+      }
+    } catch (telegramErr) {
+      const msg = telegramErr instanceof Error ? telegramErr.message : 'unknown'
+      console.error(`[pipeline] Telegram send failed for ${ticker}: ${msg}`)
+
+      // Record the failure for diagnostics
+      await supabaseAdmin
+        .from('telegram_approvals')
+        .insert({
+          signal_id: fullSignal.id,
+          user_id: userId,
+          telegram_message_id: null,
+          chat_id: process.env.TELEGRAM_CHAT_ID ?? '',
+          delivered: false,
+          expires_at: new Date(
+            Date.now() + SIGNAL_CONFIG.APPROVAL_WINDOW_MINUTES * 60_000
+          ).toISOString(),
+          send_error: msg,
+        })
+        .then(({ error }) => {
+          if (error) console.warn('[pipeline] failed to record telegram failure:', error)
+        })
+    }
+
     details.push({
       ticker,
       scanScore: candidate.aiScore,
       ivRank: candidate.ivRank,
       stage: 'qualified',
       confidence: qualification.confidence,
-      signalId: inserted.id,
+      signalId: fullSignal.id,
+      telegramSent,
     })
   }
 
@@ -242,6 +310,7 @@ export async function runScanPipeline(userId: string): Promise<ScanPipelineResul
     preFilterPassed: survivors.length,
     qualifiedCount,
     persistedCount,
+    telegramSentCount,
     details,
     durationMs: Date.now() - startedAt,
   }
