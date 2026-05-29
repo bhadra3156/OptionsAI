@@ -81,7 +81,21 @@ export default function ScanPage() {
     }
   }, [])
 
-  useEffect(() => { runScan() }, [runScan])
+    useEffect(() => {
+    const cached = sessionStorage.getItem('last_scan_results');
+    if (cached) {
+      setData(JSON.parse(cached));
+    } else {
+      runScan();
+    }
+  }, [runScan]);
+
+  // Update storage when data changes
+  useEffect(() => {
+    if (data) {
+      sessionStorage.setItem('last_scan_results', JSON.stringify(data));
+    }
+  }, [data]);
 
   const getFilteredResults = () => {
     if (!data) return []
