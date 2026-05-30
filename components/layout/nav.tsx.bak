@@ -8,7 +8,6 @@ import { TrendingUp } from 'lucide-react'
 
 const NAV_LINKS = [
   { href: '/dashboard', label: 'Analyse' },
-  { href: '/signals', label: 'Signals' },
   { href: '/market', label: 'Market' },
   { href: '/scan', label: 'Scan' },
   { href: '/trades', label: 'Trade Journal' },
